@@ -1,0 +1,706 @@
+package com.bernaferrari.wordkeep.ui.components
+
+import com.bernaferrari.wordkeep.ui.icons.MaterialSymbols
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import com.bernaferrari.wordkeep.domain.model.Block
+import com.bernaferrari.wordkeep.domain.model.BlockDocument
+import com.bernaferrari.wordkeep.domain.model.BlockType
+import markor.shared.generated.resources.Res
+import markor.shared.generated.resources.delete
+import markor.shared.generated.resources.bullet_list
+import markor.shared.generated.resources.change_block_type
+import markor.shared.generated.resources.code_block_label
+import markor.shared.generated.resources.copy
+import markor.shared.generated.resources.cut
+import markor.shared.generated.resources.divider_label
+import markor.shared.generated.resources.drag_to_reorder
+import markor.shared.generated.resources.heading_1_label
+import markor.shared.generated.resources.heading_2_label
+import markor.shared.generated.resources.heading_3_label
+import markor.shared.generated.resources.heading_4_label
+import markor.shared.generated.resources.heading_5_label
+import markor.shared.generated.resources.heading_6_label
+import markor.shared.generated.resources.image_label
+import markor.shared.generated.resources.image_description_hint
+import markor.shared.generated.resources.list_item_hint
+import markor.shared.generated.resources.more_options
+import markor.shared.generated.resources.move_down
+import markor.shared.generated.resources.move_up
+import markor.shared.generated.resources.numbered_list
+import markor.shared.generated.resources.numbered_item_hint
+import markor.shared.generated.resources.paragraph
+import markor.shared.generated.resources.quote_label
+import markor.shared.generated.resources.quote_hint
+import markor.shared.generated.resources.tap_to_add_block
+import markor.shared.generated.resources.task
+import markor.shared.generated.resources.type_something_hint
+import markor.shared.generated.resources.code_hint
+import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
+
+/**
+ * A complete block-based editor with drag-to-reorder functionality.
+ * Each block can be independently edited, dragged to reorder, and converted to different types.
+ */
+@Composable
+fun BlockEditor(
+    document: BlockDocument,
+    onDocumentChange: (BlockDocument) -> Unit,
+    isFocusMode: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
+    val hapticFeedback = LocalHapticFeedback.current
+
+    // Drag state
+    var draggedBlockIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var dragStarted by remember { mutableStateOf(false) }
+
+    // Calculate scroll to keep dragged item visible
+    LaunchedEffect(draggedBlockIndex, dragOffset) {
+        if (draggedBlockIndex != null) {
+            val itemIndex = draggedBlockIndex!!
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            val itemInfo = visibleItems.find { it.index == itemIndex }
+
+            if (itemInfo != null) {
+                // Auto-scroll if dragging near edges
+                val viewportCenter =
+                    listState.layoutInfo.viewportStartOffset + listState.layoutInfo.viewportSize.height / 2
+                val itemTop = itemInfo.offset
+                val itemBottom = itemTop + itemInfo.size
+
+                when {
+                    itemTop < listState.layoutInfo.viewportStartOffset + 100 -> {
+                        listState.animateScrollToItem(maxOf(0, itemIndex - 1))
+                    }
+
+                    itemBottom > listState.layoutInfo.viewportStartOffset + listState.layoutInfo.viewportSize.height - 100 -> {
+                        listState.animateScrollToItem(
+                            minOf(
+                                document.blocks.size - 1,
+                                itemIndex + 1
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        itemsIndexed(document.blocks, key = { index, block -> block.id }) { index, block ->
+            val isFocused = document.focusedBlockId == block.id
+            val isDragging = draggedBlockIndex == index
+
+            BlockItem(
+                block = block,
+                index = index,
+                isFocused = isFocused,
+                isFocusMode = isFocusMode,
+                isDragging = isDragging,
+                dragOffset = if (isDragging) dragOffset else IntOffset.Zero,
+                onFocused = {
+                    onDocumentChange(document.copy(focusedBlockId = block.id))
+                },
+                onContentChange = { newContent ->
+                    onDocumentChange(document.updateBlock(block.id) { it.copy(content = newContent) })
+                },
+                onEnterPressed = {
+                    onDocumentChange(document.insertAfter(block.id))
+                },
+                onBackspaceAtStart = {
+                    if (block.content.isEmpty() && document.blocks.size > 1) {
+                        onDocumentChange(document.deleteBlock(block.id))
+                    }
+                },
+                onTypeChange = { newType ->
+                    onDocumentChange(document.updateBlock(block.id) { it.copy(type = newType) })
+                },
+                onCheckToggle = {
+                    onDocumentChange(document.updateBlock(block.id) { it.copy(checked = !it.checked) })
+                },
+                onDragStart = {
+                    draggedBlockIndex = index
+                    dragStarted = true
+                    hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                },
+                onDrag = { offset ->
+                    dragOffset = offset
+                },
+                onDragEnd = {
+                    if (draggedBlockIndex != null) {
+                        val fromIndex = draggedBlockIndex!!
+                        val itemHeight = 72 // Approximate item height with padding
+                        val deltaInItems = (dragOffset.y.toFloat() / itemHeight).roundToInt()
+                        val toIndex =
+                            (fromIndex + deltaInItems).coerceIn(0, document.blocks.size - 1)
+
+                        if (fromIndex != toIndex) {
+                            onDocumentChange(document.moveBlockByIndex(fromIndex, toIndex))
+                        }
+                    }
+                    draggedBlockIndex = null
+                    dragOffset = IntOffset.Zero
+                    dragStarted = false
+                    hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                },
+                onDragCancel = {
+                    draggedBlockIndex = null
+                    dragOffset = IntOffset.Zero
+                    dragStarted = false
+                },
+                onDelete = {
+                    onDocumentChange(document.deleteBlock(block.id))
+                },
+                onMoveUp = {
+                    if (index > 0) {
+                        onDocumentChange(document.moveBlockByIndex(index, index - 1))
+                    }
+                },
+                onMoveDown = {
+                    if (index < document.blocks.size - 1) {
+                        onDocumentChange(document.moveBlockByIndex(index, index + 1))
+                    }
+                }
+            )
+        }
+
+        // Add block button at the end
+        item {
+            AddBlockButton(
+                onClick = {
+                    val lastBlockId = document.blocks.lastOrNull()?.id
+                    if (lastBlockId != null) {
+                        onDocumentChange(document.insertAfter(lastBlockId))
+                    } else {
+                        onDocumentChange(BlockDocument())
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun BlockItem(
+    block: Block,
+    index: Int,
+    isFocused: Boolean,
+    isFocusMode: Boolean,
+    isDragging: Boolean,
+    dragOffset: IntOffset,
+    onFocused: () -> Unit,
+    onContentChange: (String) -> Unit,
+    onEnterPressed: () -> Unit,
+    onBackspaceAtStart: () -> Unit,
+    onTypeChange: (BlockType) -> Unit,
+    onCheckToggle: () -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (IntOffset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onDelete: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val hapticFeedback = LocalHapticFeedback.current
+    var showTypeMenu by remember { mutableStateOf(false) }
+    var showBlockMenu by remember { mutableStateOf(false) }
+
+    // Request focus when this block should be focused
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    // Animation for drag state
+    val elevation by animateDpAsState(
+        targetValue = if (isDragging) 12.dp else if (isFocused) 4.dp else 0.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "elevation"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isDragging) 1.03f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy),
+        label = "scale"
+    )
+
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            isDragging -> MaterialTheme.colorScheme.primary
+            isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            else -> MaterialTheme.colorScheme.outlineVariant
+        },
+        label = "border"
+    )
+
+    // Focus mode dimming
+    val alpha by animateFloatAsState(
+        targetValue = if (!isFocusMode || isFocused) 1f else 0.4f,
+        label = "alpha"
+    )
+
+    // Drag handle rotation animation
+    val handleRotation by animateFloatAsState(
+        targetValue = if (isDragging) 90f else 0f,
+        label = "handleRotation"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isDragging) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        tonalElevation = elevation,
+        shadowElevation = elevation,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationY = if (isDragging) dragOffset.y.toFloat() else 0f
+                this.alpha = alpha
+            }
+            .border(2.dp, borderColor, RoundedCornerShape(16.dp))
+    ) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.padding(12.dp)
+        ) {
+            // Enhanced drag handle
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .pointerInput(Unit) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                onDragStart()
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                onDrag(
+                                    IntOffset(
+                                        dragOffset.x + dragAmount.x.roundToInt(),
+                                        dragOffset.y + dragAmount.y.roundToInt()
+                                    )
+                                )
+                            },
+                            onDragEnd = { onDragEnd() },
+                            onDragCancel = { onDragCancel() }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = MaterialSymbols.Filled.DragIndicator,
+                    contentDescription = stringResource(Res.string.drag_to_reorder),
+                    tint = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(handleRotation)
+                )
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            // Block type selector
+            Box {
+                Surface(
+                    onClick = { showTypeMenu = true },
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = getBlockTypeIcon(block.type),
+                            contentDescription = stringResource(Res.string.change_block_type),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = showTypeMenu,
+                    onDismissRequest = { showTypeMenu = false }
+                ) {
+                    BlockType.entries.filter { it != BlockType.DIVIDER && it != BlockType.IMAGE }
+                        .forEach { type ->
+                            DropdownMenuItem(
+                                text = { Text(getBlockTypeName(type)) },
+                                leadingIcon = {
+                                    Icon(
+                                        getBlockTypeIcon(type),
+                                        null,
+                                        Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    onTypeChange(type)
+                                    showTypeMenu = false
+                                }
+                            )
+                        }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.move_up)) },
+                        leadingIcon = {
+                            Icon(
+                                MaterialSymbols.Filled.ArrowUpward,
+                                null,
+                                Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = {
+                            onMoveUp()
+                            showTypeMenu = false
+                        },
+                        enabled = index > 0
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.move_down)) },
+                        leadingIcon = {
+                            Icon(
+                                MaterialSymbols.Filled.ArrowDownward,
+                                null,
+                                Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = {
+                            onMoveDown()
+                            showTypeMenu = false
+                        },
+                        enabled = index < Int.MAX_VALUE
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            // Task checkbox
+            if (block.type == BlockType.TASK_LIST) {
+                Checkbox(
+                    checked = block.checked,
+                    onCheckedChange = {
+                        hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onCheckToggle()
+                    },
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+            }
+
+            // Content field
+            Column(modifier = Modifier.weight(1f)) {
+                BasicTextField(
+                    value = block.content,
+                    onValueChange = onContentChange,
+                    textStyle = getBlockTextStyle(block.type).copy(
+                        color = if (block.type == BlockType.TASK_LIST && block.checked)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        else
+                            MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    singleLine = block.type != BlockType.CODE_BLOCK && block.type != BlockType.PARAGRAPH,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { if (it.isFocused) onFocused() }
+                        .onKeyEvent { event ->
+                            when {
+                                event.key == Key.Enter && event.type == KeyEventType.KeyDown -> {
+                                    onEnterPressed()
+                                    true
+                                }
+
+                                event.key == Key.Backspace && event.type == KeyEventType.KeyDown && block.content.isEmpty() -> {
+                                    onBackspaceAtStart()
+                                    true
+                                }
+
+                                event.key == Key.D && event.isCtrlPressed && event.type == KeyEventType.KeyDown -> {
+                                    onDelete()
+                                    true
+                                }
+
+                                else -> false
+                            }
+                        },
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (block.content.isEmpty()) {
+                                Text(
+                                    text = getBlockPlaceholder(block.type),
+                                    style = getBlockTextStyle(block.type),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+            }
+
+            // Actions menu
+            Box {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isFocused,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut()
+                ) {
+                    IconButton(
+                        onClick = { showBlockMenu = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = MaterialSymbols.Filled.MoreVert,
+                            contentDescription = stringResource(Res.string.more_options),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = showBlockMenu,
+                    onDismissRequest = { showBlockMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.delete)) },
+                        leadingIcon = { Icon(MaterialSymbols.Filled.Delete, null, Modifier.size(18.dp)) },
+                        onClick = {
+                            onDelete()
+                            showBlockMenu = false
+                        }
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.copy)) },
+                        leadingIcon = {
+                            Icon(
+                                MaterialSymbols.Filled.ContentCopy,
+                                null,
+                                Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = { /* TODO: Copy to clipboard */ showBlockMenu = false }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.cut)) },
+                        leadingIcon = {
+                            Icon(
+                                MaterialSymbols.Filled.ContentCut,
+                                null,
+                                Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = { /* TODO: Cut to clipboard */ showBlockMenu = false }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddBlockButton(onClick: () -> Unit) {
+    val hapticFeedback = LocalHapticFeedback.current
+    var isPressed by remember { mutableStateOf(false) }
+
+    val backgroundAlpha by animateFloatAsState(
+        targetValue = if (isPressed) 0.15f else 0f,
+        label = "bgAlpha"
+    )
+
+    Surface(
+        onClick = {
+            hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = backgroundAlpha),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f + backgroundAlpha),
+                shape = RoundedCornerShape(16.dp)
+            )
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Icon(
+                imageVector = MaterialSymbols.Filled.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = stringResource(Res.string.tap_to_add_block),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+private fun getBlockTypeIcon(type: BlockType): ImageVector = when (type) {
+    BlockType.PARAGRAPH -> MaterialSymbols.AutoMirrored.Filled.Notes
+    BlockType.HEADING1 -> MaterialSymbols.Filled.Title
+    BlockType.HEADING2 -> MaterialSymbols.Filled.Title
+    BlockType.HEADING3 -> MaterialSymbols.Filled.Title
+    BlockType.HEADING4 -> MaterialSymbols.Filled.Title
+    BlockType.HEADING5 -> MaterialSymbols.Filled.Title
+    BlockType.HEADING6 -> MaterialSymbols.Filled.Title
+    BlockType.BULLET_LIST -> MaterialSymbols.AutoMirrored.Filled.FormatListBulleted
+    BlockType.NUMBERED_LIST -> MaterialSymbols.Filled.FormatListNumbered
+    BlockType.TASK_LIST -> MaterialSymbols.Filled.CheckBox
+    BlockType.QUOTE -> MaterialSymbols.Filled.FormatQuote
+    BlockType.CODE_BLOCK -> MaterialSymbols.Filled.Code
+    BlockType.DIVIDER -> MaterialSymbols.Filled.Remove
+    BlockType.IMAGE -> MaterialSymbols.Filled.Image
+}
+
+@Composable
+private fun getBlockTypeName(type: BlockType): String =
+    stringResource(
+        when (type) {
+            BlockType.PARAGRAPH -> Res.string.paragraph
+            BlockType.HEADING1 -> Res.string.heading_1_label
+            BlockType.HEADING2 -> Res.string.heading_2_label
+            BlockType.HEADING3 -> Res.string.heading_3_label
+            BlockType.HEADING4 -> Res.string.heading_4_label
+            BlockType.HEADING5 -> Res.string.heading_5_label
+            BlockType.HEADING6 -> Res.string.heading_6_label
+            BlockType.BULLET_LIST -> Res.string.bullet_list
+            BlockType.NUMBERED_LIST -> Res.string.numbered_list
+            BlockType.TASK_LIST -> Res.string.task
+            BlockType.QUOTE -> Res.string.quote_label
+            BlockType.CODE_BLOCK -> Res.string.code_block_label
+            BlockType.DIVIDER -> Res.string.divider_label
+            BlockType.IMAGE -> Res.string.image_label
+        },
+    )
+
+@Composable
+private fun getBlockPlaceholder(type: BlockType): String =
+    when (type) {
+        BlockType.PARAGRAPH -> stringResource(Res.string.type_something_hint)
+        BlockType.HEADING1 -> stringResource(Res.string.heading_1_label)
+        BlockType.HEADING2 -> stringResource(Res.string.heading_2_label)
+        BlockType.HEADING3 -> stringResource(Res.string.heading_3_label)
+        BlockType.HEADING4 -> stringResource(Res.string.heading_4_label)
+        BlockType.HEADING5 -> stringResource(Res.string.heading_5_label)
+        BlockType.HEADING6 -> stringResource(Res.string.heading_6_label)
+        BlockType.BULLET_LIST -> stringResource(Res.string.list_item_hint)
+        BlockType.NUMBERED_LIST -> stringResource(Res.string.numbered_item_hint)
+        BlockType.TASK_LIST -> stringResource(Res.string.task)
+        BlockType.QUOTE -> stringResource(Res.string.quote_hint)
+        BlockType.CODE_BLOCK -> stringResource(Res.string.code_hint)
+        BlockType.DIVIDER -> ""
+        BlockType.IMAGE -> stringResource(Res.string.image_description_hint)
+    }
+
+@Composable
+private fun getBlockTextStyle(type: BlockType): TextStyle = when (type) {
+    BlockType.HEADING1 -> MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold)
+    BlockType.HEADING2 -> MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+    BlockType.HEADING3 -> MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+    BlockType.HEADING4 -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+    BlockType.HEADING5 -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+    BlockType.HEADING6 -> MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+    BlockType.CODE_BLOCK -> MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+    BlockType.QUOTE -> MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic)
+    else -> MaterialTheme.typography.bodyLarge
+}

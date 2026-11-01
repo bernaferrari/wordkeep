@@ -1,6 +1,6 @@
 # Wordkeep Play Store release
 
-Package: `com.bernaferrari.remarkor`. Default language: English (United States). Category: Productivity. App type: app; pricing: free. The current Android release is 0.1 (version code 1).
+Package: `com.bernaferrari.wordkeep`. Default language: English (United States). Category: Productivity. App type: app; pricing: free. The current Android release is 0.1 (version code 1).
 
 ## Listing assets
 

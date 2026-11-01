@@ -1,6 +1,6 @@
 {
   "app": "Wordkeep",
-  "package": "com.bernaferrari.remarkor",
+  "package": "com.bernaferrari.wordkeep",
   "locales": [
     "en-US",
     "af",

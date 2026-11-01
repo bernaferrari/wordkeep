@@ -1,0 +1,94 @@
+package com.bernaferrari.wordkeep.domain.usecase
+
+import com.bernaferrari.wordkeep.di.NotebookPaths
+import com.bernaferrari.wordkeep.domain.repository.IFavoritesRepository
+import com.bernaferrari.wordkeep.domain.repository.IFileRepository
+import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
+import okio.Path
+import okio.Path.Companion.toPath
+import org.koin.core.annotation.Single
+
+@Single
+class InitializeNotebookUseCase(
+    private val settingsRepository: ISettingsRepository,
+    private val fileRepository: IFileRepository,
+    private val favoritesRepository: IFavoritesRepository,
+    private val notebookPaths: NotebookPaths,
+) {
+    suspend operator fun invoke(isExternal: Boolean, internalFilesDir: String) {
+        settingsRepository.setExternalStorageEnabled(isExternal)
+
+        val notebookDir = if (isExternal) {
+            notebookPaths.shared
+        } else {
+            "$internalFilesDir/Notebook"
+        }
+        val todoPath = "$notebookDir/todo.txt"
+        val quicknotePath = "$notebookDir/quicknote.md"
+
+        settingsRepository.setNotebookDirectory(notebookDir)
+        settingsRepository.setTodoFilePath(todoPath)
+        settingsRepository.setQuickNoteFilePath(quicknotePath)
+
+        initializeDefaultFiles(notebookDir.toPath(), todoPath, quicknotePath)
+    }
+
+    private suspend fun initializeDefaultFiles(
+        notebookDir: Path,
+        todoPath: String,
+        quicknotePath: String,
+    ) {
+        val notebookParent = notebookDir.parent ?: notebookDir
+        // Ensure notebook root exists without renaming an existing directory.
+        if (fileRepository.getFileInfo(notebookDir) == null) {
+            fileRepository.createDirectory(notebookParent, notebookDir.name)
+        }
+
+        val todoName = todoPath.toPath().name
+        val quickName = quicknotePath.toPath().name
+        val todoExisting = fileRepository.getFileInfo(notebookDir / todoName)
+        val quickExisting = fileRepository.getFileInfo(notebookDir / quickName)
+
+        // Only seed defaults once — re-running after refresh must not clobber user notes.
+        val todoFilePath = todoExisting?.path ?: fileRepository.createFileWithContent(
+            notebookDir,
+            todoName,
+            DEFAULT_TODO_CONTENT,
+        )
+
+        val quicknoteFilePath = quickExisting?.path ?: fileRepository.createFileWithContent(
+            notebookDir,
+            quickName,
+            DEFAULT_QUICKNOTE_CONTENT,
+        )
+
+        todoFilePath?.toString()?.let { favoritesRepository.addFavorite(it) }
+        quicknoteFilePath?.toString()?.let { favoritesRepository.addFavorite(it) }
+    }
+
+    private companion object {
+        const val DEFAULT_TODO_CONTENT = """# Todo List
+
+## Inbox
+- [ ] Welcome to Wordkeep!
+- [ ] Try creating your first todo item
+
+## Today
+
+## This Week
+"""
+        const val DEFAULT_QUICKNOTE_CONTENT = """# Quick Note
+
+Welcome to Wordkeep! This is your quick note file for jotting down thoughts.
+
+## Ideas
+- 
+
+## Tasks
+- 
+
+## Notes
+- 
+"""
+    }
+}

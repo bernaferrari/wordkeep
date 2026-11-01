@@ -38,7 +38,7 @@ kotlin {
     }
 
     android {
-        namespace = "com.bernaferrari.remarkor.shared"
+        namespace = "com.bernaferrari.wordkeep.shared"
         compileSdk {
             version = release(37) { minorApiLevel = 2 }
         }

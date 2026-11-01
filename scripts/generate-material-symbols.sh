@@ -7,9 +7,9 @@
 set -euo pipefail
 
 readonly ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly OUTPUT_DIR="$ROOT_DIR/shared/src/commonMain/kotlin/com/bernaferrari/remarkor/ui/icons"
+readonly OUTPUT_DIR="$ROOT_DIR/shared/src/commonMain/kotlin/com/bernaferrari/wordkeep/ui/icons"
 readonly BASE_URL="https://fonts.gstatic.com/render/v1/Material+Symbols+Rounded/24dp"
-readonly PACKAGE_NAME="com.bernaferrari.remarkor.ui.icons"
+readonly PACKAGE_NAME="com.bernaferrari.wordkeep.ui.icons"
 
 readonly FILLED_ICONS=(
   add archive arrow_back arrow_downward arrow_forward arrow_upward article assignment

@@ -65,15 +65,15 @@ The only CI is [deploy-web-vercel.yml](../.github/workflows/deploy-web-vercel.ym
 
 [Screenshot Studio](../store-listing/studio/) lives in `store-listing/studio/`. It is synced from `~/Documents/screenshot-studio`, so never edit it here.
 
-- `storeCapture` is a debug-based build type (`com.bernaferrari.remarkor.storecapture`). Its `StoreCaptureActivity` seeds a private notebook with fictional notes. Build it with `./gradlew :app:assembleFlavorDefaultStoreCapture`.
+- `storeCapture` is a debug-based build type (`com.bernaferrari.wordkeep.storecapture`). Its `StoreCaptureActivity` seeds a private notebook with fictional notes. Build it with `./gradlew :app:assembleFlavorDefaultStoreCapture`.
 - `node store-listing/studio/recapture.cjs` builds that APK, captures every size on the capture emulator (`CAPTURE_SERIAL`, default `emulator-5578`, never a phone) and exports. Add a locale (`en-US`), `--profile phone`, `--no-build` or `--no-capture`. The scene tour it runs is `store-listing/capture-emulator.py`.
 - Export only: `PLAYWRIGHT_MODULE=… node store-listing/studio/export.cjs --locale en-US`. Live editor: `node store-listing/studio/server.cjs`.
 - Icons are SVG layers in `store-listing/brand/` (main), `brand/todo`, `quicknote` and `linkbox` (widget variants) and `brand/atest` (the `flavorAtest` icon), listed in `brand/icon.json`. Regenerate every target with `PLAYWRIGHT_MODULE=… node store-listing/studio/icon.cjs`. Don't edit the generated `res/` icons by hand.
 
 ## Good to know
 
-- The Gradle project is still named `Markor` and the package is `com.bernaferrari.remarkor`. Don't rename either: the package is the installed app id.
-- `flavorAtest` installs beside the normal app (`com.bernaferrari.remarkor_test`) with a date-based version code, so you can test without touching your real notes.
+- The Gradle project is still named `Markor` and the package is `com.bernaferrari.wordkeep`. Don't rename either: the package is the installed app id.
+- `flavorAtest` installs beside the normal app (`com.bernaferrari.wordkeep_test`) with a date-based version code, so you can test without touching your real notes.
 - Release builds read optional local signing properties; credentials and keystores stay outside Git. See Google Play release below.
 - Notes are plain files in app storage or a shared folder. Test with throwaway notes, and capture only on the disposable emulator.
 - Credits: a port of [Markor](https://github.com/gsantner/markor) by Gregor Santner. Licensed under Apache 2.0 ([LICENSE](../LICENSE)).

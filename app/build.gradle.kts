@@ -39,7 +39,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.bernaferrari.remarkor"
+        applicationId = "com.bernaferrari.wordkeep"
         versionName = "0.1"
         versionCode = 1
         minSdk = 26
@@ -49,7 +49,7 @@ android {
     flavorDimensions += "default"
     productFlavors {
         create("flavorAtest") {
-            applicationId = "com.bernaferrari.remarkor_test"
+            applicationId = "com.bernaferrari.wordkeep_test"
             versionCode = SimpleDateFormat("yyMMdd", Locale.US).format(Date()).toInt()
             versionName = "${android.defaultConfig.versionName}-${
                 SimpleDateFormat("HHmm", Locale.US).format(Date())
@@ -99,7 +99,7 @@ android {
         compose = true
     }
 
-    namespace = "com.bernaferrari.remarkor"
+    namespace = "com.bernaferrari.wordkeep"
 
     lint {
         abortOnError = false

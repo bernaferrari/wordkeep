@@ -2,7 +2,7 @@
 
 Last updated: October 30, 2026
 
-Wordkeep is a Markdown and text editor developed by Bernardo Ferrari. This policy covers the Android app `com.bernaferrari.remarkor`.
+Wordkeep is a Markdown and text editor developed by Bernardo Ferrari. This policy covers the Android app `com.bernaferrari.wordkeep`.
 
 ## Information on your device
 

@@ -1,0 +1,5 @@
+package com.bernaferrari.wordkeep.ui.components
+
+actual fun supportsSharedStorageMode(): Boolean = true
+
+actual fun storesNotesInBrowser(): Boolean = false

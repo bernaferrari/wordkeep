@@ -22,7 +22,7 @@ apk = HERE.parent / 'app/build/outputs/apk/flavorDefault/storeCapture/app-flavor
 if not apk.exists():
     raise SystemExit('Build first: ./gradlew :app:assembleFlavorDefaultStoreCapture')
 PALETTE = 'amber'
-d = Device(args, 'com.bernaferrari.remarkor.storecapture', 'com.bernaferrari.remarkor.storecapture.StoreCaptureActivity', apk=apk)
+d = Device(args, 'com.bernaferrari.wordkeep.storecapture', 'com.bernaferrari.wordkeep.storecapture.StoreCaptureActivity', apk=apk)
 
 
 def tap(label, key=None):

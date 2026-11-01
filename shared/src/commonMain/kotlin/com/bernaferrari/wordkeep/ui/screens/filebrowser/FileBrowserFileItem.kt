@@ -1,0 +1,441 @@
+package com.bernaferrari.wordkeep.ui.screens.filebrowser
+
+import com.bernaferrari.wordkeep.ui.components.stripRedundantTitle
+import com.bernaferrari.wordkeep.ui.icons.MaterialSymbols
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.bernaferrari.wordkeep.domain.repository.FileInfo
+import com.bernaferrari.wordkeep.domain.repository.IAssetRepository
+import com.bernaferrari.wordkeep.ui.components.AssetManagerSheet
+import com.bernaferrari.wordkeep.ui.components.BackHandler
+import com.bernaferrari.wordkeep.ui.components.CreateFolderDialog
+import com.bernaferrari.wordkeep.ui.components.DeleteDialog
+import com.bernaferrari.wordkeep.ui.components.EmptyState
+import com.bernaferrari.wordkeep.ui.components.FileActionSheet
+import com.bernaferrari.wordkeep.ui.components.FileGridItem
+import com.bernaferrari.wordkeep.ui.components.HapticHelper
+import com.bernaferrari.wordkeep.ui.components.LabelsDialog
+import com.bernaferrari.wordkeep.ui.components.RenameDialog
+import com.bernaferrari.wordkeep.ui.components.ShareDialog
+import com.bernaferrari.wordkeep.ui.components.SharedElementContainer
+import com.bernaferrari.wordkeep.ui.components.SharedTransitionKeys
+import com.bernaferrari.wordkeep.ui.components.SwipeableFileCard
+import com.bernaferrari.wordkeep.ui.components.rememberHapticHelper
+import com.bernaferrari.wordkeep.ui.components.renderGridMarkdown
+import com.bernaferrari.wordkeep.ui.components.resolveMarkdownColorPalette
+import com.bernaferrari.wordkeep.ui.components.resolveNoteSurfaceColor
+import com.bernaferrari.wordkeep.ui.viewmodel.FileBrowserViewModel
+import com.bernaferrari.wordkeep.ui.viewmodel.FileFilterMode
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import markor.shared.generated.resources.Res
+import markor.shared.generated.resources.add_to_favorites
+import markor.shared.generated.resources.back_to_with_arg
+import markor.shared.generated.resources.create_new
+import markor.shared.generated.resources.delete_permanently
+import markor.shared.generated.resources.folder
+import markor.shared.generated.resources.more
+import markor.shared.generated.resources.more_create_options
+import markor.shared.generated.resources.no_favorites_yet
+import markor.shared.generated.resources.no_favorites_yet_description
+import markor.shared.generated.resources.notebook_is_empty
+import markor.shared.generated.resources.notebook_is_empty_description
+import markor.shared.generated.resources.restore
+import markor.shared.generated.resources.remove_from_favorites
+import markor.shared.generated.resources.trash_is_empty
+import markor.shared.generated.resources.trash_is_empty_description
+import okio.Path.Companion.toPath
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
+
+@Composable
+internal fun EmptyListState() {
+    EmptyState(
+        title = stringResource(Res.string.notebook_is_empty),
+        subtitle = stringResource(Res.string.notebook_is_empty_description),
+        icon = MaterialSymbols.Filled.FolderOpen
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun FileItem(
+    file: FileInfo,
+    isSelected: Boolean,
+    selectionMode: Boolean,
+    isFavorite: Boolean = false,
+    noteColor: Int? = null,
+    preview: String? = null,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onMoreClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    haptic: HapticHelper = rememberHapticHelper(),
+    isTrashMode: Boolean = false,
+    onRestore: (() -> Unit)? = null,
+    onDeletePermanently: (() -> Unit)? = null,
+    isKeyboardSelected: Boolean = false
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val containerColor = when {
+        isSelected -> colorScheme.primaryContainer
+        isKeyboardSelected -> colorScheme.secondaryContainer
+        isTrashMode -> colorScheme.errorContainer.copy(alpha = 0.3f)
+        file.isDirectory -> colorScheme.surface
+        noteColor != null -> resolveNoteSurfaceColor(
+            noteColor,
+            colorScheme,
+            fallback = colorScheme.surfaceContainer
+        )
+
+        else -> colorScheme.surfaceContainer
+    }
+    val effectiveBackground = containerColor.compositeOver(colorScheme.surface)
+    val accentOverride = noteColor?.let(::Color)
+    val previewPalette = remember(effectiveBackground, colorScheme, accentOverride) {
+        resolveMarkdownColorPalette(
+            colorScheme = colorScheme,
+            backgroundColor = effectiveBackground,
+            accentColorOverride = accentOverride
+        )
+    }
+    val iconContainerColor = remember(file.isDirectory, colorScheme, accentOverride) {
+        when {
+            file.isDirectory -> colorScheme.primaryContainer
+            accentOverride != null -> {
+                val alpha = if (colorScheme.surface.luminance() < 0.5f) 0.36f else 0.22f
+                accentOverride.copy(alpha = alpha).compositeOver(colorScheme.surfaceContainerHigh)
+            }
+
+            else -> colorScheme.secondaryContainer
+        }
+    }
+    val iconTintColor =
+        remember(file.isDirectory, colorScheme, iconContainerColor, accentOverride) {
+            when {
+                file.isDirectory -> colorScheme.primary
+                accentOverride != null -> {
+                    resolveMarkdownColorPalette(
+                        colorScheme = colorScheme,
+                        backgroundColor = iconContainerColor,
+                        accentColorOverride = accentOverride
+                    ).accent
+                }
+
+                else -> colorScheme.secondary
+            }
+        }
+
+    // Hint at what's inside instead of one generic document glyph for every row.
+    val leadingIcon = remember(file.isDirectory, file.extension, file.preview) {
+        val preview = file.preview.orEmpty()
+        when {
+            file.isDirectory -> MaterialSymbols.Filled.Folder
+            Regex("(?m)^\\s*(?:[-*+]\\s+)?\\[[ xX]\\]\\s").containsMatchIn(preview) ->
+                MaterialSymbols.Filled.Assignment
+            file.extension.lowercase() == "txt" -> MaterialSymbols.Filled.TextSnippet
+            else -> MaterialSymbols.Filled.Description
+        }
+    }
+
+    val interactionSource =
+        remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+
+    val card = @Composable {
+        val cardShape = MaterialTheme.shapes.medium
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(cardShape)
+                .combinedClickable(
+                    onClick = {
+                        haptic.performHeavyClick()
+                        onClick()
+                    },
+                    onLongClick = {
+                        haptic.performHeavyClick()
+                        onLongClick()
+                    },
+                    interactionSource = interactionSource,
+                    indication = ripple()
+                ),
+            shape = cardShape,
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = when {
+                isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                isKeyboardSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.secondary)
+                else -> null
+            },
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Icon Container
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(MaterialTheme.shapes.large)
+                        .background(iconContainerColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = null,
+                        tint = iconTintColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .padding(start = 16.dp)
+                        .weight(1f)
+                ) {
+                    // Show filename with extension in reduced opacity
+                    if (file.isDirectory) {
+                        Text(
+                            text = file.name,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = stringResource(Res.string.folder),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    } else {
+                        val baseName = file.name.substringBeforeLast(".")
+                        val ext = if (file.name.contains(".")) ".${file.extension}" else ""
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SharedElementContainer(
+                                key = SharedTransitionKeys.fileTitle(file.path.toString()),
+                                isSource = true
+                            ) {
+                                Text(
+                                    text = baseName,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        letterSpacing = 0.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = ext,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Normal,
+                                    letterSpacing = 0.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+
+                        // Prefer the file preview: it keeps line breaks, so headings and task
+                        // markers render instead of showing as raw "## Inbox - [ ]" text.
+                        // Blank lines are dropped so both preview lines carry content.
+                        val effectivePreview = (file.preview?.takeIf { it.isNotBlank() }
+                            ?: preview?.takeIf { it.isNotBlank() })
+                            ?.let { stripRedundantTitle(it, baseName) }
+                            ?.lineSequence()
+                            ?.filter { it.isNotBlank() }
+                            ?.joinToString("\n")
+                        if (!effectivePreview.isNullOrEmpty()) {
+                            val previewText = remember(
+                                effectivePreview,
+                                colorScheme,
+                                effectiveBackground,
+                                accentOverride
+                            ) {
+                                renderGridMarkdown(
+                                    effectivePreview,
+                                    colorScheme,
+                                    backgroundColor = effectiveBackground,
+                                    accentColorOverride = accentOverride
+                                )
+                            }
+                            Text(
+                                text = previewText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = previewPalette.body,
+                                maxLines = 2,
+                                modifier = Modifier.padding(top = 4.dp),
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                if (selectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = {
+                            haptic.performLightClick()
+                            onClick()
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.primary,
+                            uncheckedColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+                } else if (isTrashMode) {
+                    // Trash mode: show restore and delete permanently actions
+                    Row {
+                        IconButton(
+                            onClick = {
+                                haptic.performSuccess()
+                                onRestore?.invoke()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = MaterialSymbols.Filled.Restore,
+                                contentDescription = stringResource(Res.string.restore),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                haptic.performHeavyClick()
+                                onDeletePermanently?.invoke()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = MaterialSymbols.Filled.DeleteForever,
+                                contentDescription = stringResource(Res.string.delete_permanently),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                } else {
+                    Row {
+                        IconButton(
+                            onClick = {
+                                haptic.performLightClick()
+                                onToggleFavorite()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) MaterialSymbols.Filled.Star else MaterialSymbols.Outlined.Star,
+                                contentDescription = stringResource(
+                                    if (isFavorite) Res.string.remove_from_favorites else Res.string.add_to_favorites
+                                ),
+                                tint = if (isFavorite) {
+                                    MaterialTheme.colorScheme.tertiary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                haptic.performHeavyClick()
+                                onMoreClick()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = MaterialSymbols.Filled.MoreVert,
+                                contentDescription = stringResource(Res.string.more),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!file.isDirectory) {
+        SharedElementContainer(
+            key = SharedTransitionKeys.fileCard(file.path.toString()),
+            isSource = true,
+            useSharedBounds = true
+        ) {
+            card()
+        }
+    } else {
+        card()
+    }
+}
