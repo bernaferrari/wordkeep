@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 """Capture Wordkeep's real Android screens for the Play listing (needs adb and Pillow).
 
-`node store-listing/studio/recapture.cjs` builds the storeCapture flavour, runs this tour for every device
-size and exports. Run alone after `./gradlew :app:assembleFlavorDefaultStoreCapture`:
-python3 store-listing/capture-emulator.py [--profile phone] [--locale de-DE] [--only home,editor]
+`npx screenshot-studio recapture` builds the storeCapture flavour, runs this tour for every device
+size and exports. Run alone after `./gradlew :app:assembleFlavorDefaultStoreCapture`, with the studio's
+capture module on PYTHONPATH (recapture sets it):
+PYTHONPATH=<screenshot-studio>/studio python3 store-listing/capture-emulator.py [--profile phone] [--locale de-DE] [--only home,editor]
 
 The storeCapture build seeds fictional notes on first launch (app/src/storeCapture). The studio's
 capture.py sets the display size and density per profile, System UI demo mode (9:41, full battery and
 Wi-Fi), gesture navigation and the app language; this tour drives each scene and writes
 <locale>/raw/<profile>/<scene>.png plus a .nodes.json layout sidecar.
 """
-import sys
 from pathlib import Path
 
+from capture import Device, parser  # the studio's, on PYTHONPATH when recapture runs this tour
+
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE / 'studio'))
-from capture import Device, parser  # noqa: E402
 
 args = parser(__doc__).parse_args()
 apk = HERE.parent / 'app/build/outputs/apk/flavorDefault/storeCapture/app-flavorDefault-storeCapture.apk'
 if not apk.exists():
     raise SystemExit('Build first: ./gradlew :app:assembleFlavorDefaultStoreCapture')
 PALETTE = 'amber'
-d = Device(args, 'com.bernaferrari.wordkeep.storecapture', 'com.bernaferrari.wordkeep.storecapture.StoreCaptureActivity', apk=apk)
+d = Device(args, 'com.bernaferrari.wordkeep.storecapture', 'com.bernaferrari.wordkeep.storecapture.StoreCaptureActivity', apk=apk,
+           listing=HERE)
 
 
 def tap(label, key=None):

@@ -9,12 +9,12 @@ Package: `com.bernaferrari.wordkeep`. Default language: English (United States).
 The default English artwork includes eight phone images and five images for each tablet size. Tablet images are fitted onto Play-compatible 9:16 or 16:9 canvases without cropping. The icon is `store-listing/brand/icon.png`; the feature graphic is `store-listing/en-US/feature-graphic.png`, rendered from `feature-graphic.html`.
 
 ```sh
-PLAYWRIGHT_MODULE=/path/to/playwright node store-listing/studio/export.cjs --locale en-US --strict
-PLAYWRIGHT_MODULE=/path/to/playwright node store-listing/render-feature.cjs
+npx screenshot-studio export --locale en-US --strict
+node store-listing/render-feature.cjs
 SHARP_MODULE=/path/to/sharp node store-listing/prepare-play.mjs
 ```
 
-The module overrides can be omitted if the dependencies resolve locally. Staging validates text limits, image dimensions and counts, and writes ignored `store-listing/play-staging/`; it never uploads. Inspect artwork before upload. Screenshot Studio itself is synced from the shared master; edit the app's theme and gallery, not `studio/`.
+`SHARP_MODULE` can be omitted if sharp resolves locally. Staging validates text limits, image dimensions and counts, and writes ignored `store-listing/play-staging/`; it never uploads. Inspect artwork before upload. Screenshot Studio itself comes from the `screenshot-studio` package; edit the app's theme and gallery.
 
 ## Privacy and declarations
 
