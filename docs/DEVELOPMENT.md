@@ -66,7 +66,7 @@ The only CI is [deploy-web-vercel.yml](../.github/workflows/deploy-web-vercel.ym
 [Screenshot Studio](https://github.com/bernaferrari/screenshot-studio) comes from the `screenshot-studio` package (`npx screenshot-studio …`, run in the repository); `store-listing/` keeps only this app's words, look and captures.
 
 - `storeCapture` is a debug-based build type (`com.bernaferrari.wordkeep.storecapture`). Its `StoreCaptureActivity` seeds a private notebook with fictional notes. Build it with `./gradlew :app:assembleFlavorDefaultStoreCapture`.
-- `npx screenshot-studio recapture` builds that APK, captures every size on the capture emulator (`CAPTURE_SERIAL`, default `emulator-5578`, never a phone) and exports. Add a locale (`en-US`), `--profile phone`, `--no-build` or `--no-capture`. The scene tour it runs is `store-listing/capture-emulator.py`.
+- `npx screenshot-studio recapture` builds that APK, captures every size on the capture emulator (`emulator-5578`, never a phone) and exports. Add a locale (`en-US`), `--profile phone`, `--no-build` or `--no-capture`. The scene tour it runs is `store-listing/capture.tour.mjs`; `npx screenshot-studio tour --profile phone` runs it alone.
 - Export only: `npx screenshot-studio export --locale en-US`. Live editor: `npx screenshot-studio studio`.
 - Icons are SVG layers in `store-listing/brand/` (main), `brand/todo`, `quicknote` and `linkbox` (widget variants) and `brand/atest` (the `flavorAtest` icon), listed in `brand/icon.json`. Regenerate every target with `npx screenshot-studio icons`. Don't edit the generated `res/` icons by hand.
 
