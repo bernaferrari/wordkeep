@@ -41,7 +41,7 @@ android {
     defaultConfig {
         applicationId = "com.bernaferrari.wordkeep"
         versionName = "0.1"
-        versionCode = 1
+        versionCode = 2
         minSdk = 26
         targetSdk = 37
     }
