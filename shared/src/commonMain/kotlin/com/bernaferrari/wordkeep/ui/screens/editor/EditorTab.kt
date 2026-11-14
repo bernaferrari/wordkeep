@@ -67,6 +67,7 @@ internal fun EditorTab(
     editorFontSize: Int,
     wordWrap: Boolean,
     autoFormat: Boolean,
+    editable: Boolean,
     surfaceColor: Color,
     noteAccentColor: Color?,
     isFocusMode: Boolean = false,
@@ -187,6 +188,7 @@ internal fun EditorTab(
                 ) {
                     BasicTextField(
                         value = title,
+                        enabled = editable,
                         onValueChange = onTitleChange,
                         singleLine = true,
                         textStyle = titleTextStyle.copy(color = markdownPalette.body),
@@ -310,6 +312,7 @@ internal fun EditorTab(
                     }
                     BasicTextField(
                         value = content,
+                        enabled = editable,
                         onValueChange = onContentChange,
                         textStyle = editorTextStyle,
                         cursorBrush = SolidColor(markdownPalette.accent),

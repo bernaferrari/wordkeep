@@ -96,7 +96,8 @@ fun EditorScreen(
     val document = viewModel.document
     val activeFilePath = document?.path?.toString() ?: filePath
     val content = viewModel.content
-    val titleInput = viewModel.titleInput
+    val titleInput = if (document == null) filePath.toPath().name.substringBeforeLast(".")
+    else viewModel.titleInput
     var initialAutoFocusConsumed by remember { mutableStateOf(false) }
     var editorFocusNonce by remember { mutableIntStateOf(0) }
     var isFocusMode by remember { mutableStateOf(false) }
@@ -268,6 +269,35 @@ fun EditorScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
+            EditorFlipContent(
+                isPreviewMode = isPreviewMode,
+                activeFilePath = activeFilePath,
+                titleInput = titleInput,
+                content = content,
+                showLineNumbers = showLineNumbers,
+                editorFontSize = editorFontSize,
+                wordWrap = wordWrap,
+                autoFormat = autoFormat,
+                editable = document != null,
+                surfaceColor = editorContentSurfaceColor,
+                noteAccentColor = noteColor?.let(::Color),
+                isFocusMode = isFocusMode,
+                editorFocusNonce = editorFocusNonce,
+                // Shared bounds vs. still-visible grid cards crash Lookahead on web/dialog overlay.
+                enableSharedElements = !embeddedInDialog,
+                autoFocusOnStart = openKeyboardOnStart &&
+                    !initialAutoFocusConsumed &&
+                    document?.content?.isBlank() == true,
+                onAutoFocusConsumed = { initialAutoFocusConsumed = true },
+                onTitleChange = { viewModel.titleInput = it },
+                onTitleCommit = { scope.launch { viewModel.save(commitTitle = true) } },
+                onContentChange = { viewModel.updateContent(it, trackTyping = true) },
+                onTapToEdit = {
+                    editorFocusNonce++
+                    isPreviewMode = false
+                },
+            )
+
             if (document == null) {
                 if (viewModel.isLoading) {
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -279,34 +309,6 @@ fun EditorScreen(
                 }
                 return@Box
             }
-            EditorFlipContent(
-                isPreviewMode = isPreviewMode,
-                activeFilePath = activeFilePath,
-                titleInput = titleInput,
-                content = content,
-                showLineNumbers = showLineNumbers,
-                editorFontSize = editorFontSize,
-                wordWrap = wordWrap,
-                autoFormat = autoFormat,
-                surfaceColor = editorContentSurfaceColor,
-                noteAccentColor = noteColor?.let(::Color),
-                isFocusMode = isFocusMode,
-                editorFocusNonce = editorFocusNonce,
-                // Shared bounds vs. still-visible grid cards crash Lookahead on web/dialog overlay.
-                enableSharedElements = !embeddedInDialog,
-                autoFocusOnStart = openKeyboardOnStart &&
-                    !initialAutoFocusConsumed &&
-                    document.content.isBlank(),
-                onAutoFocusConsumed = { initialAutoFocusConsumed = true },
-                onTitleChange = { viewModel.titleInput = it },
-                onTitleCommit = { scope.launch { viewModel.save(commitTitle = true) } },
-                onContentChange = { viewModel.updateContent(it, trackTyping = true) },
-                onTapToEdit = {
-                    editorFocusNonce++
-                    isPreviewMode = false
-                },
-            )
-
             EditorOverlays(
                 showSearchDialog = showSearchDialog,
                 showExportDialog = showExportDialog,
