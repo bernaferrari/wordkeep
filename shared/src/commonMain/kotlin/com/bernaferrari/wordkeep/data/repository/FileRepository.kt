@@ -243,26 +243,17 @@ class FileRepository(
         item.parent?.takeIf { it.name == "item" }?.parent?.takeIf { it.parent == trash }
 
     private fun originalTrashPath(trash: Path, path: Path): Path? {
-        val entry = trashEntry(trash, path)
-        if (entry != null) {
-            return try {
-                fileSystem.read(entry / "original-path") { readUtf8().toPath(normalize = true) }
-                    .takeIf { original ->
-                        original.name == path.name &&
-                            trashDirectoryName !in original.segments && ".." !in original.segments
-                    }
-            } catch (_: IOException) {
-                null
-            }
+        val entry = trashEntry(trash, path) ?: return null
+        return try {
+            fileSystem.read(entry / "original-path") { readUtf8().toPath(normalize = true) }
+                .takeIf { original ->
+                    original.name == path.name &&
+                        trashDirectoryName !in original.segments && ".." !in original.segments
+                }
+        } catch (_: IOException) {
+            null
         }
-
-        // Older trash entries store only the timestamp and filename.
-        if (path.parent != trash) return null
-        val name = legacyTrashName.matchEntire(path.name)?.groupValues?.get(1) ?: return null
-        return trash.parent?.resolve(name)
     }
-
-    private val legacyTrashName = Regex("[0-9]{8}_[0-9]{6}_(.+)")
 
     override suspend fun emptyTrash(): Boolean = withContext(Dispatchers.Default) {
         noteFileMutations.withLock {
@@ -279,15 +270,10 @@ class FileRepository(
         noteFileMutations.withLock {
             val trash = getTrashPath()
             fileSystem.listOrNull(trash).orEmpty()
-                .flatMap { entry ->
-                    if (legacyTrashName.matches(entry.name)) listOf(entry)
-                    else fileSystem.listOrNull(entry / "item").orEmpty()
-                }
+                .flatMap { entry -> fileSystem.listOrNull(entry / "item").orEmpty() }
                 .mapNotNull { path ->
-                    getFileInfo(path, includePreview = true)?.let { file ->
-                        val original = originalTrashPath(trash, path)
-                        file.copy(name = original?.name ?: file.name)
-                    }
+                    if (originalTrashPath(trash, path) == null) null
+                    else getFileInfo(path, includePreview = true)
                 }
                 .sortedByDescending { it.lastModified }
         }

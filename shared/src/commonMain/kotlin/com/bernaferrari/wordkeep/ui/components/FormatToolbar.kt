@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -203,7 +204,7 @@ private fun ExpressiveActionButton(
             hapticHelper.performLightClick()
             onAction(action)
         },
-        shapes = IconButtonDefaults.shapes(),
+        shapes = IconButtonDefaults.shapes(shape = CircleShape),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
