@@ -1,5 +1,6 @@
 package com.bernaferrari.wordkeep.data.repository
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import com.bernaferrari.wordkeep.data.local.AppSettings
 import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
 import kotlinx.coroutines.flow.Flow
@@ -12,7 +13,7 @@ internal class SettingsRepository(
     override val isFirstRun: Flow<Boolean> = appSettings.isFirstRun
     override val isFileBrowserShowHiddenFiles: Flow<Boolean> = appSettings.isFileBrowserShowHiddenFiles
     override val isFileBrowserShowFileExtensions: Flow<Boolean> = appSettings.isFileBrowserShowFileExtensions
-    override val getFileBrowserSortOrder: Flow<String> = appSettings.getFileBrowserSortOrder
+    override val getFileBrowserSortOrder: Flow<FileSortOrder> = appSettings.getFileBrowserSortOrder
     override val isFileBrowserFolderFirst: Flow<Boolean> = appSettings.isFileBrowserFolderFirst
     override val isShowLineNumbers: Flow<Boolean> = appSettings.isShowLineNumbers
     override val isWordWrap: Flow<Boolean> = appSettings.isWordWrap
@@ -29,7 +30,7 @@ internal class SettingsRepository(
         appSettings.setFileBrowserShowHiddenFiles(value)
     override suspend fun setFileBrowserShowFileExtensions(value: Boolean) =
         appSettings.setFileBrowserShowFileExtensions(value)
-    override suspend fun setFileBrowserSortOrder(value: String) = appSettings.setFileBrowserSortOrder(value)
+    override suspend fun setFileBrowserSortOrder(value: FileSortOrder) = appSettings.setFileBrowserSortOrder(value)
     override suspend fun setFileBrowserFolderFirst(value: Boolean) = appSettings.setFileBrowserFolderFirst(value)
     override suspend fun setShowLineNumbers(value: Boolean) = appSettings.setShowLineNumbers(value)
     override suspend fun setWordWrap(value: Boolean) = appSettings.setWordWrap(value)

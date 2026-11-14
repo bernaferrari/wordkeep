@@ -1,15 +1,18 @@
 package com.bernaferrari.wordkeep.data.repository
 
 import com.bernaferrari.wordkeep.domain.model.Document
+import com.bernaferrari.wordkeep.domain.model.DocumentFormat
 import com.bernaferrari.wordkeep.domain.repository.IDocumentRepository
 import com.bernaferrari.wordkeep.domain.repository.INoteMetadataRepository
 import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
 import com.bernaferrari.wordkeep.util.nowMillis
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.withLock
+import org.koin.core.annotation.Named
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.withContext
-import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
@@ -20,10 +23,21 @@ import org.koin.core.annotation.Single
 class DocumentRepository(
     private val settingsRepository: ISettingsRepository,
     private val noteMetadataRepository: INoteMetadataRepository,
+    @Named("default_notebook_path") private val defaultNotebookPath: String,
 ) : IDocumentRepository {
 
-    private val documentCache = MutableStateFlow<Map<String, Document>>(emptyMap())
     private val fileSystem = platformFileSystem
+
+    @OptIn(ExperimentalUuidApi::class)
+    private fun writeAtomically(target: Path, content: String) {
+        val temporary = (target.parent ?: ".".toPath()) / ".wordkeep-${Uuid.random()}.tmp"
+        try {
+            fileSystem.write(temporary, mustCreate = true) { writeUtf8(content) }
+            fileSystem.atomicMove(temporary, target)
+        } finally {
+            if (fileSystem.exists(temporary)) fileSystem.delete(temporary)
+        }
+    }
 
     override suspend fun loadDocument(path: Path): Document? = withContext(Dispatchers.Default) {
         try {
@@ -38,10 +52,11 @@ class DocumentRepository(
 
             val lastModified = metadata.lastModifiedAtMillis ?: 0L
 
-            val document =
-                Document.fromPath(path).copy(content = content, lastModified = lastModified)
-            updateCache(document)
-            document
+            val todo = settingsRepository.getTodoFilePath.first()
+                .ifEmpty { (defaultNotebookPath.toPath() / "todo.txt").toString() }
+            val document = Document.fromPath(path).copy(content = content, lastModified = lastModified)
+            if (todo.toPath() == path) document.copy(format = DocumentFormat.TODOTXT)
+            else document
         } catch (e: IOException) {
             null
         }
@@ -49,90 +64,86 @@ class DocumentRepository(
 
     override suspend fun saveDocument(document: Document, content: String): Boolean =
         withContext(Dispatchers.Default) {
-            try {
-                fileSystem.write(document.path) {
-                    writeUtf8(content)
+            noteFileMutations.withLock {
+                try {
+                    if (!fileSystem.exists(document.path)) return@withLock false
+                    writeAtomically(document.path, content)
+                    noteMetadataRepository.upsertFromContent(
+                        path = document.path.toString(),
+                        content = content,
+                        nowMillis = fileSystem.metadata(document.path).lastModifiedAtMillis ?: nowMillis()
+                    )
+                    true
+                } catch (e: IOException) {
+                    false
                 }
-                val timestamp = nowMillis()
-                val updated = document.copy(
-                    content = content,
-                    lastModified = timestamp
-                )
-                updateCache(updated)
-                noteMetadataRepository.upsertFromContent(
-                    path = document.path.toString(),
-                    content = content,
-                    nowMillis = updated.lastModified
-                )
-                true
-            } catch (e: IOException) {
-                false
             }
         }
 
     override suspend fun createDocument(path: Path, content: String): Document? =
         withContext(Dispatchers.Default) {
-            try {
-                val parent = path.parent ?: ".".toPath()
-                parent.let {
-                    if (!fileSystem.exists(parent)) {
-                        fileSystem.createDirectories(parent)
-                    }
-                }
-                val actualPath = resolveUniquePath(parent, path.name)
-                fileSystem.write(actualPath) {
-                    writeUtf8(content)
-                }
+            noteFileMutations.withLock {
+                try {
+                    val parent = path.parent ?: ".".toPath()
+                    fileSystem.createDirectories(parent)
+                    val actualPath = fileSystem.resolveUniquePath(parent, path.name)
+                    writeAtomically(actualPath, content)
 
-                val metadata = fileSystem.metadata(actualPath)
-                val document = Document.fromPath(actualPath)
-                    .copy(content = content, lastModified = metadata.lastModifiedAtMillis ?: 0L)
-                updateCache(document)
-                noteMetadataRepository.upsertFromContent(
-                    path = actualPath.toString(),
-                    content = content,
-                    nowMillis = document.lastModified
-                )
-                document
-            } catch (e: IOException) {
-                null
+                    val metadata = fileSystem.metadata(actualPath)
+                    val document = Document.fromPath(actualPath)
+                        .copy(content = content, lastModified = metadata.lastModifiedAtMillis ?: 0L)
+                    noteMetadataRepository.upsertFromContent(
+                        path = actualPath.toString(),
+                        content = content,
+                        nowMillis = document.lastModified
+                    )
+                    document
+                } catch (e: IOException) {
+                    null
+                }
             }
         }
 
     override suspend fun deleteDocument(path: Path): Boolean = withContext(Dispatchers.Default) {
-        try {
-            fileSystem.delete(path)
-            removeFromCache(path)
-            noteMetadataRepository.deleteByPath(path.toString())
-            true
-        } catch (e: IOException) {
-            false
+        noteFileMutations.withLock {
+            try {
+                fileSystem.delete(path)
+                noteMetadataRepository.deleteByPath(path.toString())
+                true
+            } catch (e: IOException) {
+                false
+            }
         }
     }
 
     override suspend fun renameDocument(document: Document, newName: String): Path? =
         withContext(Dispatchers.Default) {
-            try {
-                val oldPath = document.path
-                val parent = oldPath.parent ?: ".".toPath()
-                val newPath = resolveUniquePath(parent, newName, excludePath = oldPath)
-                if (newPath == oldPath) return@withContext oldPath
-                fileSystem.atomicMove(oldPath, newPath)
-                removeFromCache(oldPath)
-                noteMetadataRepository.updatePath(
-                    oldPath = oldPath.toString(),
-                    newPath = newPath.toString(),
-                    nowMillis = nowMillis()
-                )
-                newPath
-            } catch (e: IOException) {
-                null
+            noteFileMutations.withLock {
+                try {
+                    val oldPath = document.path
+                    val parent = oldPath.parent ?: ".".toPath()
+                    val newPath = fileSystem.resolveUniquePath(parent, newName, excludePath = oldPath)
+                    if (newPath == oldPath) return@withLock oldPath
+                    val notebook = settingsRepository.getNotebookDirectory.first()
+                        .ifBlank { defaultNotebookPath }.toPath()
+                    val quickNote = settingsRepository.getQuickNoteFilePath.first()
+                        .ifEmpty { (notebook / "quicknote.md").toString() }
+                    val todo = settingsRepository.getTodoFilePath.first()
+                        .ifEmpty { (notebook / "todo.txt").toString() }
+                    fileSystem.atomicMove(oldPath, newPath)
+                    if (quickNote.toPath() == oldPath) settingsRepository.setQuickNoteFilePath(newPath.toString())
+                    if (todo.toPath() == oldPath) settingsRepository.setTodoFilePath(newPath.toString())
+                    noteMetadataRepository.updatePath(
+                        oldPath = oldPath.toString(),
+                        newPath = newPath.toString(),
+                        nowMillis = fileSystem.metadata(newPath).lastModifiedAtMillis ?: nowMillis()
+                    )
+                    newPath
+                } catch (e: IOException) {
+                    null
+                }
             }
         }
-
-    override fun observeDocument(path: Path): Flow<Document?> {
-        return MutableStateFlow(documentCache.value[path.toString()])
-    }
 
     override suspend fun documentExists(path: Path): Boolean = withContext(Dispatchers.Default) {
         fileSystem.exists(path)
@@ -148,41 +159,4 @@ class DocumentRepository(
         }
     }
 
-    private fun updateCache(document: Document) {
-        documentCache.value = documentCache.value + (document.path.toString() to document)
-    }
-
-    private fun removeFromCache(path: Path) {
-        documentCache.value = documentCache.value - path.toString()
-    }
-
-    private fun resolveUniquePath(
-        parent: Path,
-        requestedName: String,
-        excludePath: Path? = null
-    ): Path {
-        val normalizedName = requestedName.trim().ifBlank { "Untitled" }
-        val (baseName, extension) = splitBaseAndExtension(normalizedName)
-        var index = 0
-
-        while (true) {
-            val candidateName = if (index == 0) {
-                normalizedName
-            } else {
-                "$baseName ($index)$extension"
-            }
-            val candidatePath = parent / candidateName
-            if (excludePath != null && candidatePath == excludePath) return candidatePath
-            if (!fileSystem.exists(candidatePath)) return candidatePath
-            index++
-        }
-    }
-
-    private fun splitBaseAndExtension(fileName: String): Pair<String, String> {
-        val dotIndex = fileName.lastIndexOf('.')
-        if (dotIndex <= 0 || dotIndex == fileName.length - 1) {
-            return fileName to ""
-        }
-        return fileName.substring(0, dotIndex) to fileName.substring(dotIndex)
-    }
 }

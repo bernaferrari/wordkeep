@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -49,7 +50,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bernaferrari.wordkeep.ui.components.FocusModeOverlay
 import com.bernaferrari.wordkeep.ui.components.MarkdownVisualTransformation
 import com.bernaferrari.wordkeep.ui.components.calculateParagraphAlpha
 import com.bernaferrari.wordkeep.ui.components.getCurrentParagraphIndex
@@ -66,6 +66,7 @@ internal fun EditorTab(
     showLineNumbers: Boolean,
     editorFontSize: Int,
     wordWrap: Boolean,
+    autoFormat: Boolean,
     surfaceColor: Color,
     noteAccentColor: Color?,
     isFocusMode: Boolean = false,
@@ -147,7 +148,6 @@ internal fun EditorTab(
         }
     }
 
-    FocusModeOverlay(enabled = isFocusMode) {
     SharedElementContainer(
         key = SharedTransitionKeys.fileCard(filePath),
         isSource = false,
@@ -328,25 +328,24 @@ internal fun EditorTab(
                         modifier = Modifier
                             .padding(start = if (showLineNumbers) MarkorTheme.spacing.medium else 0.dp)
                             .weight(1f)
+                            .then(if (wordWrap) Modifier else Modifier.horizontalScroll(rememberScrollState()))
                             .focusRequester(focusRequester)
                             .heightIn(min = bodyMinHeight)
                             .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                                if (autoFormat && event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
                                     if (handleSmartEnter(content, onContentChange)) {
                                         return@onPreviewKeyEvent true
                                     }
                                 }
                                 false
                             },
-                        singleLine = !wordWrap,
+                        singleLine = false,
                     )
                 }
             }
         }
     }
-    }
 }
-
 
 internal fun handleSmartEnter(
     value: TextFieldValue,
@@ -362,6 +361,7 @@ internal fun handleSmartEnter(
         lineStart--
     }
     val currentLine = text.substring(lineStart, selection.start)
+    val atLineEnd = selection.start == text.length || text[selection.start] == '\n'
 
     // Regex patterns for lists
     val taskRegex = """^(\s*)([-*+])\s*\[([ xX]?)\]\s*(.*)$""".toRegex()
@@ -377,9 +377,9 @@ internal fun handleSmartEnter(
             val whitespace = taskMatch.groupValues[1]
             val marker = taskMatch.groupValues[2]
             val content = taskMatch.groupValues[4]
-            if (content.isEmpty()) {
+            if (content.isEmpty() && atLineEnd) {
                 // Exit list: Clear the marker and insert newline
-                val newText = text.removeRange(lineStart, selection.start) + "\n"
+                val newText = text.replaceRange(lineStart, selection.start, "\n")
                 onValueChange(value.copy(text = newText, selection = TextRange(lineStart + 1)))
             } else {
                 // Continue list
@@ -399,8 +399,8 @@ internal fun handleSmartEnter(
             val whitespace = bulletMatch.groupValues[1]
             val marker = bulletMatch.groupValues[2]
             val content = bulletMatch.groupValues[3]
-            if (content.isEmpty()) {
-                val newText = text.removeRange(lineStart, selection.start) + "\n"
+            if (content.isEmpty() && atLineEnd) {
+                val newText = text.replaceRange(lineStart, selection.start, "\n")
                 onValueChange(value.copy(text = newText, selection = TextRange(lineStart + 1)))
             } else {
                 val insert = "\n$whitespace$marker "
@@ -417,13 +417,13 @@ internal fun handleSmartEnter(
 
         numberedMatch != null -> {
             val whitespace = numberedMatch.groupValues[1]
-            val number = numberedMatch.groupValues[2].toInt()
+            val number = numberedMatch.groupValues[2].toIntOrNull() ?: return false
             val content = numberedMatch.groupValues[3]
-            if (content.isEmpty()) {
-                val newText = text.removeRange(lineStart, selection.start) + "\n"
+            if (content.isEmpty() && atLineEnd) {
+                val newText = text.replaceRange(lineStart, selection.start, "\n")
                 onValueChange(value.copy(text = newText, selection = TextRange(lineStart + 1)))
             } else {
-                val insert = "\n$whitespace${number + 1}. "
+                val insert = "\n$whitespace${number.toLong() + 1}. "
                 val newText = text.replaceRange(selection.start, selection.start, insert)
                 onValueChange(
                     value.copy(

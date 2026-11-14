@@ -22,20 +22,52 @@ class IndexNoteMetadataUseCaseTest {
             metadataRepository = FakeMetadataRepository(indexed),
         )
 
-        useCase("/notes".toPath(), nowMillis = 1L)
+        useCase("/notes".toPath())
 
         assertEquals(listOf("/notes/readme.md", "/notes/todo.txt"), indexed)
     }
+
+    @Test
+    fun invoke_preservesUnreadableNotesAndPrunesDeletedNotes() = runTest {
+        val files = FakeFileRepository(unreadable = setOf("readme.md"))
+        val metadata = FakeMetadataRepository(
+            indexed = mutableListOf(),
+            notes = listOf(
+                note("/notes/readme.md", updatedAt = 1),
+                note("/notes/todo.txt", updatedAt = 0),
+                note("/notes/deleted.md", updatedAt = 1),
+                note("/other/deleted.md", updatedAt = 1),
+            ),
+        )
+        IndexNoteMetadataUseCase(files, metadata)("/notes".toPath())
+
+        assertEquals(listOf("readme.md"), files.reads)
+        assertEquals(emptyList(), metadata.indexed)
+        assertEquals(listOf("/notes/deleted.md"), metadata.deleted)
+    }
+
+    private fun note(path: String, updatedAt: Long) = NoteMetadata(
+        id = 1, path = path, title = "Note", pinned = false, isArchived = false,
+        color = null, preview = "Previously indexed", labels = emptyList(), updatedAt = updatedAt,
+    )
+
 }
 
-private class FakeFileRepository : IFileRepository {
-    override suspend fun listFilesRecursively(directory: Path): List<FileInfo> = listOf(
+private class FakeFileRepository(
+    private val unreadable: Set<String> = emptySet(),
+) : IFileRepository {
+    val reads = mutableListOf<String>()
+
+    override suspend fun listFilesRecursively(directory: Path, includePreview: Boolean): List<FileInfo> = listOf(
         file("readme.md"),
         file("photo.jpg"),
         file("todo.txt"),
     )
 
-    override suspend fun readText(path: Path): String = "content:${path.name}"
+    override suspend fun readText(path: Path): String? {
+        reads += path.name
+        return if (path.name in unreadable) null else "content:${path.name}"
+    }
 
     private fun file(name: String) = FileInfo(
         path = "/notes/$name".toPath(),
@@ -48,38 +80,38 @@ private class FakeFileRepository : IFileRepository {
 
     override suspend fun listFiles(directory: Path): List<FileInfo> = emptyList()
     override suspend fun searchFiles(directory: Path, query: String, recursive: Boolean): List<FileInfo> = emptyList()
-    override suspend fun searchContent(directory: Path, query: String, recursive: Boolean): List<FileInfo> = emptyList()
     override suspend fun getFileInfo(path: Path): FileInfo? = null
     override suspend fun createFile(parent: Path, name: String): Path? = null
     override suspend fun createFileWithContent(parent: Path, name: String, content: String): Path? = null
     override suspend fun createDirectory(parent: Path, name: String): Path? = null
     override suspend fun deleteFile(path: Path): Boolean = false
-    override suspend fun moveToTrash(path: Path): Boolean = false
-    override suspend fun restoreFromTrash(path: Path, originalPath: Path): Boolean = false
+    override suspend fun moveToTrash(path: Path): Path? = null
+    override suspend fun restoreFromTrash(path: Path): Path? = null
     override suspend fun emptyTrash(): Boolean = false
     override suspend fun listTrash(): List<FileInfo> = emptyList()
     override suspend fun getTrashPath(): Path = "/trash".toPath()
     override suspend fun renameFile(path: Path, newName: String): Path? = null
     override suspend fun copyFile(source: Path, destination: Path): Boolean = false
     override suspend fun moveFile(source: Path, destination: Path): Boolean = false
-    override fun observeFiles(directory: Path): Flow<List<Path>> = flowOf(emptyList())
     override suspend fun isDirectory(path: Path): Boolean = false
-    override suspend fun isFile(path: Path): Boolean = true
+    override suspend fun isFile(path: Path): Boolean = path.name in setOf("readme.md", "todo.txt", "photo.jpg")
 }
 
 private class FakeMetadataRepository(
-    private val indexed: MutableList<String>,
+    val indexed: MutableList<String>,
+    private val notes: List<NoteMetadata> = emptyList(),
 ) : INoteMetadataRepository {
+    val deleted = mutableListOf<String>()
     override suspend fun upsertFromContent(path: String, content: String, nowMillis: Long) {
         indexed += path
     }
 
-    override fun observeNotes(): Flow<List<NoteMetadata>> = flowOf(emptyList())
+    override fun observeNotes(): Flow<List<NoteMetadata>> = flowOf(notes)
     override fun observeLabels(): Flow<List<NoteLabel>> = flowOf(emptyList())
     override suspend fun upsertFromPath(path: String, nowMillis: Long) = Unit
     override suspend fun getNoteByPath(path: String) = null
     override suspend fun updatePath(oldPath: String, newPath: String, nowMillis: Long) = Unit
-    override suspend fun deleteByPath(path: String) = Unit
+    override suspend fun deleteByPath(path: String) { deleted += path }
     override suspend fun deleteByPathRecursively(path: String) = Unit
     override suspend fun setLabelsForPath(path: String, labels: List<String>) = Unit
     override suspend fun setColor(path: String, color: Int?) = Unit

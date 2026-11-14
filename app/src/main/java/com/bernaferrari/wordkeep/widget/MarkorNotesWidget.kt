@@ -1,6 +1,10 @@
 package com.bernaferrari.wordkeep.widget
 
 import android.content.Context
+import android.content.Intent
+import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.actionStartActivity
+import com.bernaferrari.wordkeep.activity.MainActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -43,13 +47,12 @@ import com.bernaferrari.wordkeep.R
 class MarkorNotesWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Generate a beautiful gradient background
-        val gradientColors = listOf(
-            Color(0xFF667EEA),  // Purple
-            Color(0xFF764BA2),  // Deep purple
-            Color(0xFF6B8DD6),  // Blue-purple
-            Color(0xFF8E37D7),  // Magenta
-        )
+        val recent = widgetRecentNotes(context).take(3)
+        val openNotebook = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val quickNote = Intent(context, MainActivity::class.java)
+            .setAction(MainActivity.ACTION_OPEN_WIDGET)
+            .putExtra(MainActivity.EXTRA_WIDGET_NOTE, "quick_note")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         provideContent {
             GlanceTheme {
@@ -88,6 +91,7 @@ class MarkorNotesWidget : GlanceAppWidget() {
                     Box(
                         modifier = GlanceModifier
                             .fillMaxWidth()
+                            .clickable(actionStartActivity(quickNote))
                             .background(ColorProvider(Color.White.copy(alpha = 0.2f)))
                             .padding(16.dp)
                     ) {
@@ -126,24 +130,13 @@ class MarkorNotesWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(8.dp))
 
-                    // Sample notes (in real implementation, would load from DataStore)
-                    RecentNoteItem(
-                        title = context.getString(R.string.widget_preview_shopping_list),
-                        preview = context.getString(R.string.widget_preview_shopping_list_content),
-                        time = "2h ago"
-                    )
-                    Spacer(modifier = GlanceModifier.height(4.dp))
-                    RecentNoteItem(
-                        title = context.getString(R.string.widget_preview_meeting_notes),
-                        preview = context.getString(R.string.widget_preview_meeting_notes_content),
-                        time = "5h ago"
-                    )
-                    Spacer(modifier = GlanceModifier.height(4.dp))
-                    RecentNoteItem(
-                        title = context.getString(R.string.other),
-                        text = context.getString(R.string.items_selected_witharg, 3),
-                        time = "Yesterday"
-                    )
+                    if (recent.isEmpty()) {
+                        Text(context.getString(R.string.widget_no_recent_notes), style = TextStyle(color = ColorProvider(Color.White)))
+                    }
+                    recent.forEach { path ->
+                        RecentNoteItem(path.substringAfterLast('/').substringBeforeLast('.'), widgetRecentNoteIntent(context, path))
+                        Spacer(modifier = GlanceModifier.height(4.dp))
+                    }
 
                     Spacer(modifier = GlanceModifier.defaultWeight())
 
@@ -151,6 +144,7 @@ class MarkorNotesWidget : GlanceAppWidget() {
                     Box(
                         modifier = GlanceModifier
                             .fillMaxWidth()
+                            .clickable(actionStartActivity(openNotebook))
                             .background(ColorProvider(Color.White.copy(alpha = 0.25f)))
                             .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
@@ -173,13 +167,12 @@ class MarkorNotesWidget : GlanceAppWidget() {
 @Composable
 private fun RecentNoteItem(
     title: String,
-    preview: String? = null,
-    text: String? = null,
-    time: String
+    intent: Intent
 ) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
+            .clickable(actionStartActivity(intent))
             .background(ColorProvider(Color.White.copy(alpha = 0.15f)))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -213,25 +206,8 @@ private fun RecentNoteItem(
                 ),
                 maxLines = 1
             )
-            Text(
-                text = preview ?: text ?: "",
-                style = TextStyle(
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 11.sp,
-                    color = ColorProvider(Color.White.copy(alpha = 0.7f))
-                ),
-                maxLines = 1
-            )
         }
 
-        Text(
-            text = time,
-            style = TextStyle(
-                fontWeight = FontWeight.Normal,
-                fontSize = 10.sp,
-                color = ColorProvider(Color.White.copy(alpha = 0.6f))
-            )
-        )
     }
 }
 

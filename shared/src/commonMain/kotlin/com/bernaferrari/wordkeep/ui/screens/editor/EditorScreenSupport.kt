@@ -186,27 +186,27 @@ internal fun buildLogicalLineStarts(text: String): IntArray {
 }
 // Helper functions for text manipulation
 internal fun wrapSelection(value: TextFieldValue, prefix: String, suffix: String): TextFieldValue {
-    val before = value.text.substring(0, value.selection.start)
-    val selected = value.text.substring(value.selection.start, value.selection.end)
-    val after = value.text.substring(value.selection.end)
+    val before = value.text.substring(0, value.selection.min)
+    val selected = value.text.substring(value.selection.min, value.selection.max)
+    val after = value.text.substring(value.selection.max)
 
     val newText = before + prefix + selected + suffix + after
-    val newCursor = value.selection.start + prefix.length + selected.length
+    val newCursor = value.selection.min + prefix.length + selected.length
 
     return value.copy(text = newText, selection = androidx.compose.ui.text.TextRange(newCursor))
 }
 
 internal fun insertAtCursor(value: TextFieldValue, prefix: String, suffix: String): TextFieldValue {
-    val before = value.text.substring(0, value.selection.start)
-    val after = value.text.substring(value.selection.end)
+    val before = value.text.substring(0, value.selection.min)
+    val after = value.text.substring(value.selection.max)
     val newText = before + prefix + suffix + after
-    val newCursor = value.selection.start + prefix.length
+    val newCursor = value.selection.min + prefix.length
     return value.copy(text = newText, selection = androidx.compose.ui.text.TextRange(newCursor))
 }
 
 internal fun insertAtStartOfLine(value: TextFieldValue, textToInsert: String): TextFieldValue {
     val text = value.text
-    var lineStart = value.selection.start
+    var lineStart = value.selection.min
     if (lineStart > text.length) lineStart = text.length
     while (lineStart > 0 && text[lineStart - 1] != '\n') {
         lineStart--
@@ -216,6 +216,6 @@ internal fun insertAtStartOfLine(value: TextFieldValue, textToInsert: String): T
     val after = text.substring(lineStart)
 
     val newText = before + textToInsert + after
-    val newCursor = value.selection.start + textToInsert.length
+    val newCursor = value.selection.min + textToInsert.length
     return value.copy(text = newText, selection = androidx.compose.ui.text.TextRange(newCursor))
 }

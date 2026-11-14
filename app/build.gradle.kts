@@ -60,13 +60,6 @@ android {
         }
     }
 
-    sourceSets {
-        getByName("main") {
-            assets.directories += setOf("src/main/assets", "thirdparty/assets")
-            res.directories += setOf("src/main/res", "thirdparty/res")
-        }
-    }
-
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("upload")

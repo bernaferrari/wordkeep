@@ -9,7 +9,7 @@ class DocumentFormatTest {
         assertEquals(DocumentFormat.MARKDOWN, DocumentFormat.fromExtension(".md"))
         assertEquals(DocumentFormat.MARKDOWN, DocumentFormat.fromExtension("md"))
         assertEquals(DocumentFormat.MARKDOWN, DocumentFormat.fromExtension("MD"))
-        assertEquals(DocumentFormat.TODOTXT, DocumentFormat.fromExtension(".txt"))
+        assertEquals(DocumentFormat.PLAINTEXT, DocumentFormat.fromExtension(".txt"))
         assertEquals(DocumentFormat.PLAINTEXT, DocumentFormat.fromExtension(".unknown"))
     }
 }

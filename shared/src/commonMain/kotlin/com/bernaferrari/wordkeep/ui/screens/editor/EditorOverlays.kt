@@ -52,7 +52,6 @@ internal fun EditorOverlays(
     undoRedo: EditorUndoRedoState,
     shareService: ShareService,
     onContentChange: (TextFieldValue) -> Unit,
-    onMarkUnsaved: () -> Unit,
     onDismissSearch: () -> Unit,
     onDismissExport: () -> Unit,
     onDismissOutline: () -> Unit,
@@ -95,7 +94,6 @@ internal fun EditorOverlays(
                             selection = TextRange(selection.min + replacement.length),
                         ),
                     )
-                    onMarkUnsaved()
                 } else {
                     val startIndex = content.selection.end
                     var index = text.indexOf(query, startIndex, ignoreCase = true)
@@ -112,7 +110,6 @@ internal fun EditorOverlays(
                 if (newText != content.text) {
                     undoRedo.pushImmediate(content)
                     onContentChange(content.copy(text = newText))
-                    onMarkUnsaved()
                 }
             },
         )
@@ -125,7 +122,6 @@ internal fun EditorOverlays(
             val newContent = applySlashCommand(content, command, slashStartIndex)
             undoRedo.pushImmediate(content)
             onContentChange(newContent)
-            onMarkUnsaved()
         },
         onDismiss = {},
     )

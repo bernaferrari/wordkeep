@@ -1,5 +1,6 @@
 package com.bernaferrari.wordkeep.ui.screens.main
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import com.bernaferrari.wordkeep.ui.components.MarkorIcons
 import com.bernaferrari.wordkeep.ui.icons.MaterialSymbols
 
@@ -318,9 +319,9 @@ internal fun FilterTabRow(
 internal fun StandardTopBar(
     isGridView: Boolean,
     currentFilterMode: FileFilterMode,
-    currentSortOrder: String,
+    currentSortOrder: FileSortOrder,
     onFilterModeChange: (FileFilterMode) -> Unit,
-    onSortOrderChange: (String) -> Unit,
+    onSortOrderChange: (FileSortOrder) -> Unit,
     onToggleGridView: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit
@@ -378,39 +379,39 @@ internal fun StandardTopBar(
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.recent_first)) },
                             leadingIcon = {
-                                if (currentSortOrder == "date") Icon(
+                                if (currentSortOrder == FileSortOrder.NEWEST) Icon(
                                     MaterialSymbols.Filled.Check,
                                     contentDescription = null
                                 )
                             },
                             onClick = {
-                                onSortOrderChange("date")
+                                onSortOrderChange(FileSortOrder.NEWEST)
                                 showSortMenu = false
                             }
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.oldest_first)) },
                             leadingIcon = {
-                                if (currentSortOrder == "oldest") Icon(
+                                if (currentSortOrder == FileSortOrder.OLDEST) Icon(
                                     MaterialSymbols.Filled.Check,
                                     contentDescription = null
                                 )
                             },
                             onClick = {
-                                onSortOrderChange("oldest")
+                                onSortOrderChange(FileSortOrder.OLDEST)
                                 showSortMenu = false
                             }
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(Res.string.name)) },
                             leadingIcon = {
-                                if (currentSortOrder == "name") Icon(
+                                if (currentSortOrder == FileSortOrder.NAME) Icon(
                                     MaterialSymbols.Filled.Check,
                                     contentDescription = null
                                 )
                             },
                             onClick = {
-                                onSortOrderChange("name")
+                                onSortOrderChange(FileSortOrder.NAME)
                                 showSortMenu = false
                             }
                         )

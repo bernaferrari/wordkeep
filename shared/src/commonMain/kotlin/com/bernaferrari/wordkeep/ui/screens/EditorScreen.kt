@@ -8,7 +8,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import markor.shared.generated.resources.Res
+import markor.shared.generated.resources.failed_to_load_document_with_arg
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -16,13 +24,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.text.input.TextFieldValue
-import com.bernaferrari.wordkeep.domain.model.Document
 import com.bernaferrari.wordkeep.domain.repository.IAssetRepository
 import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
 import com.bernaferrari.wordkeep.domain.service.PickedImage
@@ -37,14 +44,11 @@ import com.bernaferrari.wordkeep.ui.screens.editor.EditorKeyboardShortcutHandler
 import com.bernaferrari.wordkeep.ui.screens.editor.EditorOverlays
 import com.bernaferrari.wordkeep.ui.screens.editor.EditorTopBar
 import com.bernaferrari.wordkeep.ui.screens.editor.buildDocumentInfoStats
-import com.bernaferrari.wordkeep.ui.screens.editor.commitEditorSession
 import com.bernaferrari.wordkeep.ui.screens.editor.editorKeyboardShortcuts
 import com.bernaferrari.wordkeep.ui.screens.editor.insertAtCursor
 import com.bernaferrari.wordkeep.ui.screens.editor.insertAtStartOfLine
-import com.bernaferrari.wordkeep.ui.screens.editor.rememberEditorUndoRedo
 import com.bernaferrari.wordkeep.ui.screens.editor.wrapSelection
 import com.bernaferrari.wordkeep.ui.viewmodel.EditorViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okio.Path.Companion.toPath
 import org.koin.compose.koinInject
@@ -76,7 +80,7 @@ fun EditorScreen(
     openKeyboardOnStart: Boolean = false,
     embeddedInDialog: Boolean = false,
     onRegisterDismissHandler: ((() -> Unit) -> Unit)? = null,
-    viewModel: EditorViewModel = koinViewModel(),
+    viewModel: EditorViewModel = koinViewModel(key = filePath),
     shareService: ShareService = koinInject(),
 ) {
     val settingsRepository: ISettingsRepository = koinInject()
@@ -84,17 +88,16 @@ fun EditorScreen(
     val editorFontSize by settingsRepository.getEditorFontSize.collectAsState(initial = 16)
     val wordWrap by settingsRepository.isWordWrap.collectAsState(initial = true)
 
+    val autoFormat by settingsRepository.isEditorAutoFormat.collectAsState(initial = true)
     val scope = rememberCoroutineScope()
-    val undoRedo = rememberEditorUndoRedo()
+    val undoRedo = viewModel.undoRedo
 
     var isPreviewMode by remember { mutableStateOf(false) }
-    var activeFilePath by remember(filePath) { mutableStateOf(filePath) }
-    var document by remember { mutableStateOf<Document?>(null) }
-    var content by remember { mutableStateOf(TextFieldValue("")) }
-    var titleInput by remember { mutableStateOf("") }
+    val document = viewModel.document
+    val activeFilePath = document?.path?.toString() ?: filePath
+    val content = viewModel.content
+    val titleInput = viewModel.titleInput
     var initialAutoFocusConsumed by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(true) }
-    var hasUnsavedChanges by remember { mutableStateOf(false) }
     var editorFocusNonce by remember { mutableIntStateOf(0) }
     var isFocusMode by remember { mutableStateOf(false) }
 
@@ -104,8 +107,8 @@ fun EditorScreen(
     var showDocumentInfoDialog by remember { mutableStateOf(false) }
     var showColorSheet by remember { mutableStateOf(false) }
 
-    val noteColor by viewModel.noteColor.collectAsState()
-    val isArchived by viewModel.isArchived.collectAsState()
+    val noteColor = viewModel.noteColor
+    val isArchived = viewModel.isArchived
     val assetManager: IAssetRepository = koinInject()
     var pendingImageInsert by remember { mutableStateOf<PickedImage?>(null) }
     val launchImagePicker = rememberImagePickerLauncher { pendingImageInsert = it }
@@ -119,26 +122,11 @@ fun EditorScreen(
         detectSlashCommand(content)
     }
 
-    suspend fun commitSession(saveIfNeeded: Boolean = hasUnsavedChanges): Boolean {
-        val result = commitEditorSession(
-            titleInput = titleInput,
-            document = document,
-            contentText = content.text,
-            hasUnsavedChanges = saveIfNeeded,
-            renameDocument = viewModel::renameDocument,
-            saveDocument = { doc, text -> viewModel.saveDocument(doc, text) },
-        )
-        titleInput = result.titleInput
-        document = result.document
-        result.activeFilePath?.let { activeFilePath = it }
-        if (saveIfNeeded && result.saveSucceeded) hasUnsavedChanges = false
-        return result.saveSucceeded
-    }
-
+    val navigateBack by rememberUpdatedState(onNavigateBack)
     DisposableEffect(onRegisterDismissHandler) {
         onRegisterDismissHandler?.invoke {
             scope.launch {
-                if (commitSession()) onNavigateBack()
+                if (viewModel.save(commitTitle = true)) navigateBack()
             }
         }
         onDispose { onRegisterDismissHandler?.invoke {} }
@@ -146,37 +134,20 @@ fun EditorScreen(
 
     PlatformBackHandler(enabled = true) {
         scope.launch {
-            if (commitSession()) onNavigateBack()
+            if (viewModel.save(commitTitle = true)) navigateBack()
         }
     }
 
-    LaunchedEffect(activeFilePath) {
-        isLoading = true
-        document = viewModel.loadDocument(activeFilePath)
-        val loadedDocument = document
-        titleInput = loadedDocument?.title?.ifBlank {
-            loadedDocument.name.substringBeforeLast(".")
-        } ?: ""
-        content = TextFieldValue(loadedDocument?.content ?: "")
-        isLoading = false
-    }
-
-    LaunchedEffect(content) {
-        if (hasUnsavedChanges && document != null) {
-            delay(2_000)
-            if (viewModel.saveDocument(document!!, content.text)) {
-                hasUnsavedChanges = false
-            }
-        }
-    }
+    LaunchedEffect(filePath) { viewModel.load(filePath) }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.flushOnStop() }
 
     LaunchedEffect(pendingImageInsert) {
         val image = pendingImageInsert ?: return@LaunchedEffect
         pendingImageInsert = null
         val relativePath = assetManager.addImage(activeFilePath.toPath(), image.data, image.fileName)
         if (relativePath != null) {
-            content = insertAtCursor(content, "![]($relativePath)", "")
-            hasUnsavedChanges = true
+            undoRedo.pushImmediate(viewModel.content)
+            viewModel.updateContent(insertAtCursor(viewModel.content, "![]($relativePath)", ""))
         }
     }
 
@@ -189,26 +160,18 @@ fun EditorScreen(
     Scaffold(
         modifier = Modifier
             .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .editorKeyboardShortcuts(
-                EditorKeyboardShortcutHandlers(
-                    showSearchDialog = showSearchDialog,
-                    onDismissSearch = { showSearchDialog = false },
-                    onShowSearch = { showSearchDialog = true },
-                    document = document,
-                    content = content,
-                    onContentChange = { content = it },
-                    onMarkUnsaved = { hasUnsavedChanges = true },
-                    onSave = {
-                        document?.let { doc ->
-                            scope.launch {
-                                if (viewModel.saveDocument(doc, content.text, notifySuccess = true)) {
-                                    hasUnsavedChanges = false
-                                }
-                            }
-                        }
-                    },
-                    undoRedo = undoRedo,
-                    scope = scope,
+            .then(
+                if (document == null) Modifier else Modifier.editorKeyboardShortcuts(
+                    EditorKeyboardShortcutHandlers(
+                        showSearchDialog = showSearchDialog,
+                        onDismissSearch = { showSearchDialog = false },
+                        onShowSearch = { showSearchDialog = true },
+                        content = content,
+                        onContentChange = { viewModel.updateContent(it) },
+                        onSave = { scope.launch { viewModel.save(commitTitle = true, notifySuccess = true) } },
+                        undoRedo = undoRedo,
+                        scope = scope,
+                    ),
                 ),
             ),
         containerColor = if (embeddedInDialog) {
@@ -235,12 +198,12 @@ fun EditorScreen(
                 embeddedInDialog = embeddedInDialog,
                 onBack = {
                     scope.launch {
-                        if (commitSession()) onNavigateBack()
+                        if (viewModel.save(commitTitle = true)) navigateBack()
                     }
                 },
                 onTogglePreview = {
                     scope.launch {
-                        if (commitSession(saveIfNeeded = false)) {
+                        if (viewModel.save(commitTitle = true)) {
                             isPreviewMode = !isPreviewMode
                         }
                     }
@@ -248,22 +211,20 @@ fun EditorScreen(
                 onShowColorSheet = { showColorSheet = true },
                 onArchive = {
                     scope.launch {
-                        if (commitSession()) {
-                            viewModel.setArchived(activeFilePath, !isArchived)
+                        if (viewModel.save(commitTitle = true)) {
+                            viewModel.setArchived(!isArchived)
                             onNavigateBack()
                         }
                     }
                 },
                 onUndo = {
                     undoRedo.undo(content)?.let {
-                        content = it
-                        hasUnsavedChanges = true
+                        viewModel.updateContent(it)
                     }
                 },
                 onRedo = {
                     undoRedo.redo(content)?.let {
-                        content = it
-                        hasUnsavedChanges = true
+                        viewModel.updateContent(it)
                     }
                 },
                 onFindReplace = { showSearchDialog = true },
@@ -274,34 +235,29 @@ fun EditorScreen(
             )
         },
         bottomBar = {
-            if (!isPreviewMode) {
+            if (!isPreviewMode && document != null) {
                 FormatToolbar { action ->
-                    if (action != EditorAction.UNDO &&
-                        action != EditorAction.REDO &&
-                        action != EditorAction.SEARCH
-                    ) {
+                    val updated = when (action) {
+                        EditorAction.BOLD -> wrapSelection(content, "**", "**")
+                        EditorAction.ITALIC -> wrapSelection(content, "_", "_")
+                        EditorAction.STRIKETHROUGH -> wrapSelection(content, "~~", "~~")
+                        EditorAction.CODE -> wrapSelection(content, "`", "`")
+                        EditorAction.LINK -> insertAtCursor(content, "[", "](url)")
+                        EditorAction.IMAGE -> {
+                            launchImagePicker()
+                            null
+                        }
+                        EditorAction.HEADER -> insertAtStartOfLine(content, "# ")
+                        EditorAction.LIST_BULLET -> insertAtStartOfLine(content, "- ")
+                        EditorAction.LIST_NUMBERED -> insertAtStartOfLine(content, "1. ")
+                        EditorAction.LIST_TASK -> insertAtStartOfLine(content, "- [ ] ")
+                        EditorAction.QUOTE -> insertAtStartOfLine(content, "> ")
+                        EditorAction.HORIZONTAL_RULE -> insertAtCursor(content, "\n---\n", "")
+                        EditorAction.UNDO, EditorAction.REDO, EditorAction.SEARCH -> null
+                    }
+                    if (updated != null && updated.text != content.text) {
                         undoRedo.pushImmediate(content)
-                    }
-                    when (action) {
-                        EditorAction.BOLD -> content = wrapSelection(content, "**", "**")
-                        EditorAction.ITALIC -> content = wrapSelection(content, "_", "_")
-                        EditorAction.STRIKETHROUGH -> content = wrapSelection(content, "~~", "~~")
-                        EditorAction.CODE -> content = wrapSelection(content, "`", "`")
-                        EditorAction.LINK -> content = insertAtCursor(content, "[", "](url)")
-                        EditorAction.IMAGE -> launchImagePicker()
-                        EditorAction.HEADER -> content = insertAtStartOfLine(content, "# ")
-                        EditorAction.LIST_BULLET -> content = insertAtStartOfLine(content, "- ")
-                        EditorAction.LIST_NUMBERED -> content = insertAtStartOfLine(content, "1. ")
-                        EditorAction.LIST_TASK -> content = insertAtStartOfLine(content, "- [ ] ")
-                        EditorAction.QUOTE -> content = insertAtStartOfLine(content, "> ")
-                        EditorAction.HORIZONTAL_RULE -> content = insertAtCursor(content, "\n---\n", "")
-                        EditorAction.UNDO, EditorAction.REDO, EditorAction.SEARCH -> Unit
-                    }
-                    if (action != EditorAction.SEARCH &&
-                        action != EditorAction.UNDO &&
-                        action != EditorAction.REDO
-                    ) {
-                        hasUnsavedChanges = true
+                        viewModel.updateContent(updated)
                     }
                 }
             }
@@ -312,6 +268,17 @@ fun EditorScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
+            if (document == null) {
+                if (viewModel.isLoading) {
+                    CircularProgressIndicator(Modifier.align(Alignment.Center))
+                } else {
+                    Text(
+                        stringResource(Res.string.failed_to_load_document_with_arg, filePath),
+                        Modifier.align(Alignment.Center),
+                    )
+                }
+                return@Box
+            }
             EditorFlipContent(
                 isPreviewMode = isPreviewMode,
                 activeFilePath = activeFilePath,
@@ -320,6 +287,7 @@ fun EditorScreen(
                 showLineNumbers = showLineNumbers,
                 editorFontSize = editorFontSize,
                 wordWrap = wordWrap,
+                autoFormat = autoFormat,
                 surfaceColor = editorContentSurfaceColor,
                 noteAccentColor = noteColor?.let(::Color),
                 isFocusMode = isFocusMode,
@@ -328,16 +296,11 @@ fun EditorScreen(
                 enableSharedElements = !embeddedInDialog,
                 autoFocusOnStart = openKeyboardOnStart &&
                     !initialAutoFocusConsumed &&
-                    !isLoading &&
-                    (document?.content?.isBlank() == true),
+                    document.content.isBlank(),
                 onAutoFocusConsumed = { initialAutoFocusConsumed = true },
-                onTitleChange = { titleInput = it },
-                onTitleCommit = { scope.launch { commitSession(saveIfNeeded = false) } },
-                onContentChange = { newContent ->
-                    undoRedo.trackContentChange(content, newContent)
-                    content = newContent
-                    hasUnsavedChanges = true
-                },
+                onTitleChange = { viewModel.titleInput = it },
+                onTitleCommit = { scope.launch { viewModel.save(commitTitle = true) } },
+                onContentChange = { viewModel.updateContent(it, trackTyping = true) },
                 onTapToEdit = {
                     editorFocusNonce++
                     isPreviewMode = false
@@ -362,14 +325,13 @@ fun EditorScreen(
                 documentInfoStats = documentInfoStats,
                 undoRedo = undoRedo,
                 shareService = shareService,
-                onContentChange = { content = it },
-                onMarkUnsaved = { hasUnsavedChanges = true },
+                onContentChange = { viewModel.updateContent(it) },
                 onDismissSearch = { showSearchDialog = false },
                 onDismissExport = { showExportDialog = false },
                 onDismissOutline = { showOutlinePanel = false },
                 onDismissDocumentInfo = { showDocumentInfoDialog = false },
                 onDismissColorSheet = { showColorSheet = false },
-                onColorSelected = { color -> viewModel.setColor(activeFilePath, color) },
+                onColorSelected = { color -> viewModel.setColor(color) },
             )
         }
     }

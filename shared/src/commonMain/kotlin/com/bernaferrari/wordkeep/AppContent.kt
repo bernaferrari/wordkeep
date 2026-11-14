@@ -16,6 +16,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.serialization.json.Json
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -68,7 +71,10 @@ fun AppContent(
                 }
 
                 false -> {
-                    val backstack = remember(initialFilePath) {
+                    val backstack = rememberSaveable(initialFilePath, saver = Saver(
+                        save = { Json.encodeToString(it.toList()) },
+                        restore = { mutableStateListOf(*Json.decodeFromString<List<Screen>>(it).toTypedArray()) },
+                    )) {
                         mutableStateListOf<Screen>(
                             initialFilePath?.let { Screen.Editor(it) } ?: Screen.Notebook
                         )

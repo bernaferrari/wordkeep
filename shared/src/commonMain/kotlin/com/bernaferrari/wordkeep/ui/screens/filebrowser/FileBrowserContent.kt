@@ -66,6 +66,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,7 +109,6 @@ import com.bernaferrari.wordkeep.ui.components.resolveNoteSurfaceColor
 import com.bernaferrari.wordkeep.ui.screens.filebrowser.BACK_ROW_RESHOW_DELAY_MS
 import com.bernaferrari.wordkeep.ui.screens.filebrowser.EmptyListState
 import com.bernaferrari.wordkeep.ui.screens.filebrowser.FileItem
-import com.bernaferrari.wordkeep.ui.screens.filebrowser.getOriginalPath
 import com.bernaferrari.wordkeep.ui.viewmodel.FileBrowserViewModel
 import com.bernaferrari.wordkeep.ui.viewmodel.FileFilterMode
 import kotlinx.coroutines.delay
@@ -150,12 +150,9 @@ fun FileBrowserContent(
     gridMinCellWidthDp: Int = 150,
     modifier: Modifier = Modifier
 ) {
-    var currentPath by remember { mutableStateOf<String?>(null) }
-    var rootPath by remember { mutableStateOf<String?>(null) }
+    var currentPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var rootPath by rememberSaveable { mutableStateOf<String?>(null) }
     fun normalizePath(path: String?): String? = path?.trimEnd('/')
-    fun originalPathForTrash(fileName: String) =
-        (currentPath ?: initialPath)?.toPath()?.let { it / getOriginalPath(fileName) }
-            ?: getOriginalPath(fileName).toPath()
     val files by viewModel.files.collectAsState()
     val selectedFiles by viewModel.selectedFiles.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
@@ -478,7 +475,9 @@ fun FileBrowserContent(
                     event.key == Key.Enter && event.type == KeyEventType.KeyDown -> {
                         if (keyboardSelectedIndex in visibleFiles.indices) {
                             val file = visibleFiles[keyboardSelectedIndex]
-                            if (file.isDirectory) {
+                            if (filterMode == FileFilterMode.TRASH) {
+                                viewModel.restoreFile(file.path)
+                            } else if (file.isDirectory) {
                                 currentPath = file.path.toString()
                             } else {
                                 viewModel.recordFileAccess(file.path.toString())
@@ -613,7 +612,7 @@ fun FileBrowserContent(
                     }
                 }
             } else {
-                if (isGridView) {
+                if (isGridView && filterMode != FileFilterMode.TRASH) {
                     LazyVerticalStaggeredGrid(
                         columns = StaggeredGridCells.Adaptive(gridMinCellWidthDp.dp),
                         contentPadding = PaddingValues(
@@ -678,7 +677,7 @@ fun FileBrowserContent(
                             val isSelected = selectedFiles.contains(file.path)
                             val isFavorite = favorites.contains(file.path.toString())
                             // Wrap with swipe actions (not in selection mode)
-                            if (!isSelectionMode && !file.isDirectory) {
+                            if (!isSelectionMode && !file.isDirectory && filterMode != FileFilterMode.TRASH) {
                                 SwipeableFileCard(
                                     isFavorite = isFavorite,
                                     onToggleFavorite = {
@@ -728,10 +727,7 @@ fun FileBrowserContent(
                                             viewModel.toggleSelection(file.path)
                                         } else if (isTrashMode) {
                                             // Restore file from trash
-                                            viewModel.restoreFile(
-                                                file.path,
-                                                originalPathForTrash(file.name)
-                                            )
+                                            viewModel.restoreFile(file.path)
                                         } else {
                                             if (file.isDirectory) {
                                                 currentPath = file.path.toString()
@@ -755,10 +751,7 @@ fun FileBrowserContent(
                                     },
                                     isTrashMode = isTrashMode,
                                     onRestore = {
-                                        viewModel.restoreFile(
-                                            file.path,
-                                            originalPathForTrash(file.name)
-                                        )
+                                        viewModel.restoreFile(file.path)
                                     },
                                     onDeletePermanently = {
                                         selectedFileForAction = file

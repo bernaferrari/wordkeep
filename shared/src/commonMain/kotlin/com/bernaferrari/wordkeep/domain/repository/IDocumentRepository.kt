@@ -1,7 +1,6 @@
 package com.bernaferrari.wordkeep.domain.repository
 
 import com.bernaferrari.wordkeep.domain.model.Document
-import kotlinx.coroutines.flow.Flow
 import okio.Path
 
 interface IDocumentRepository {
@@ -10,7 +9,6 @@ interface IDocumentRepository {
     suspend fun createDocument(path: Path, content: String = ""): Document?
     suspend fun deleteDocument(path: Path): Boolean
     suspend fun renameDocument(document: Document, newName: String): Path?
-    fun observeDocument(path: Path): Flow<Document?>
     suspend fun documentExists(path: Path): Boolean
     suspend fun readContent(path: Path): String?
 }

@@ -132,8 +132,8 @@ fun MainScreen(
     val adaptiveInfo = rememberAdaptiveLayoutInfo()
 
     // Keep-style note overlay on large screens — simple fade (sharedBounds was too expensive).
-    var noteDialogPath by remember { mutableStateOf<String?>(null) }
-    var noteDialogAutoKeyboard by remember { mutableStateOf(false) }
+    var noteDialogPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var noteDialogAutoKeyboard by rememberSaveable { mutableStateOf(false) }
     var retainedNoteDialogPath by remember { mutableStateOf<String?>(null) }
     var retainedNoteDialogAutoKeyboard by remember { mutableStateOf(false) }
     if (noteDialogPath != null) {

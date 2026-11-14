@@ -475,4 +475,6 @@
     <string name="wont_save_min_length">Files with fewer than %d characters not saved automatically in order to prevent data loss.</string>
     <string name="wrap_words">Wrap words</string>
     <string name="zero_width_space">Zero-width space</string>
+    <string name="widget_no_recent_notes">No recent notes</string>
+    <string name="widget_open_todo">Open to-do list</string>
 </resources>

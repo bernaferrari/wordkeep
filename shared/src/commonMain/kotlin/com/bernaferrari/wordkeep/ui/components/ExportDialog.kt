@@ -33,9 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.bernaferrari.wordkeep.domain.service.ShareService
-import com.bernaferrari.wordkeep.util.nowMillis
 import kotlinx.coroutines.launch
-import com.bernaferrari.wordkeep.util.formatExportTimestamp
 import markor.shared.generated.resources.Res
 import markor.shared.generated.resources.export
 import markor.shared.generated.resources.cancel

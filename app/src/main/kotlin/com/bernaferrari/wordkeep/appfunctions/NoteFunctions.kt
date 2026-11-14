@@ -1,5 +1,6 @@
 package com.bernaferrari.wordkeep.appfunctions
 
+import com.bernaferrari.wordkeep.domain.model.isNoteFileName
 import androidx.appfunctions.AppFunctionAppUnknownException
 import android.annotation.SuppressLint
 import androidx.appfunctions.AppFunctionContext
@@ -100,12 +101,11 @@ class NoteFunctions(
             throw AppFunctionInvalidArgumentException("Search query cannot be blank")
         }
 
-        val notebook = getNotebookPath()
-        val byName = fileRepository.searchFiles(notebook, query)
-        val byContent = fileRepository.searchContent(notebook, query)
-        val matches = (byName + byContent)
-            .distinctBy { it.path }
-            .filter { isNoteFile(it) }
+        val matches = fileRepository.listFilesRecursively(getNotebookPath(), includePreview = false)
+            .filter { file ->
+                isNoteFile(file) && (file.name.contains(query, ignoreCase = true) ||
+                    fileRepository.readText(file.path)?.contains(query, ignoreCase = true) == true)
+            }
 
         if (matches.isEmpty()) {
             throw AppFunctionElementNotFoundException("No notes found matching: $query")
@@ -165,7 +165,7 @@ class NoteFunctions(
     }
 
     private suspend fun FileInfo.toNote(): Note {
-        val body = preview ?: fileRepository.readText(path).take(MAX_PREVIEW_LENGTH)
+        val body = preview ?: fileRepository.readText(path).orEmpty().take(MAX_PREVIEW_LENGTH)
         return Note(
             id = path.toString(),
             title = name.substringBeforeLast("."),
@@ -174,7 +174,7 @@ class NoteFunctions(
     }
 
     private fun isNoteFile(fileInfo: FileInfo): Boolean {
-        return fileInfo.extension.lowercase() in NOTE_EXTENSIONS
+        return isNoteFileName(fileInfo.name)
     }
 
     private fun sanitizeFileName(title: String): String {
@@ -185,6 +185,5 @@ class NoteFunctions(
 
     private companion object {
         const val MAX_PREVIEW_LENGTH = 500
-        val NOTE_EXTENSIONS = setOf("md", "txt", "org", "adoc", "wiki", "csv", "keyvalue")
     }
 }

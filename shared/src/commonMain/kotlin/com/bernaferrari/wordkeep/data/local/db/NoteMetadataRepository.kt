@@ -3,6 +3,7 @@ package com.bernaferrari.wordkeep.data.local.db
 import com.bernaferrari.wordkeep.domain.model.NoteLabel
 import com.bernaferrari.wordkeep.domain.model.NoteMetadata
 import com.bernaferrari.wordkeep.domain.repository.INoteMetadataRepository
+import com.bernaferrari.wordkeep.util.nowMillis
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
@@ -35,7 +36,7 @@ internal class NoteMetadataRepository(
 
     override suspend fun updatePath(oldPath: String, newPath: String, nowMillis: Long) {
         val existing = dao.getNoteByPath(oldPath) ?: return
-        dao.updateNotePath(existing.id, newPath, nowMillis)
+        dao.updateNotePath(existing.id, newPath, existing.updatedAt)
     }
 
     override suspend fun deleteByPath(path: String) {
@@ -43,7 +44,7 @@ internal class NoteMetadataRepository(
     }
 
     override suspend fun deleteByPathRecursively(path: String) {
-        dao.deleteNotesByPathOrPrefix(path, "$path/%")
+        dao.deleteNotesByPathOrPrefix(path, "$path/")
     }
 
     override suspend fun setLabelsForPath(path: String, labels: List<String>) {
@@ -65,12 +66,14 @@ internal class NoteMetadataRepository(
     }
 
     override suspend fun setColor(path: String, color: Int?) {
-        val note = dao.getNoteByPath(path) ?: return
+        val note = dao.getNoteByPath(path)
+            ?: NoteMetadataMapper.buildNoteEntityFromPath(path, null, nowMillis())
         dao.upsertNote(note.copy(color = color))
     }
 
     override suspend fun setArchived(path: String, archived: Boolean) {
-        val note = dao.getNoteByPath(path) ?: return
+        val note = dao.getNoteByPath(path)
+            ?: NoteMetadataMapper.buildNoteEntityFromPath(path, null, nowMillis())
         dao.upsertNote(note.copy(isArchived = archived))
     }
 
@@ -80,7 +83,7 @@ internal class NoteMetadataRepository(
             val note = NoteMetadataMapper.buildNoteEntityFromPath(path, null, nowMillis).copy(pinned = true)
             dao.upsertNote(note)
         } else {
-            dao.upsertNote(existing.copy(pinned = !existing.pinned, updatedAt = nowMillis))
+            dao.upsertNote(existing.copy(pinned = !existing.pinned))
         }
     }
 }

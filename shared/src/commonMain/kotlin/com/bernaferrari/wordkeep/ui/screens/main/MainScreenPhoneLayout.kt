@@ -1,5 +1,6 @@
 package com.bernaferrari.wordkeep.ui.screens.main
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -114,7 +115,7 @@ internal fun MainScreenPhoneLayout(
     notebookDirectory: String,
     isGridView: Boolean,
     currentFilterMode: FileFilterMode,
-    currentSortOrder: String,
+    currentSortOrder: FileSortOrder,
     onClearSelection: () -> Unit,
     onSelectAll: () -> Unit,
     onSetColorForSelected: () -> Unit,
@@ -122,7 +123,7 @@ internal fun MainScreenPhoneLayout(
     onToggleGridView: () -> Unit,
     onOpenSettings: () -> Unit,
     onFilterModeChange: (FileFilterMode) -> Unit,
-    onSortOrderChange: (String) -> Unit,
+    onSortOrderChange: (FileSortOrder) -> Unit,
     onNavigateToEditor: (String, Boolean) -> Unit,
     /** Staggered grid min cell width; larger on tablet/desktop for Keep-style cards. */
     gridMinCellWidthDp: Int = 150,

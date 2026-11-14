@@ -1,79 +1,49 @@
 package com.bernaferrari.wordkeep.data.repository
 
+import com.bernaferrari.wordkeep.domain.model.isNoteFileName
 import com.bernaferrari.wordkeep.domain.repository.FileInfo
+import org.koin.core.annotation.Named
+import kotlinx.coroutines.sync.withLock
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import com.bernaferrari.wordkeep.domain.repository.IFileRepository
 import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
-import com.bernaferrari.wordkeep.util.nowMillis
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import com.bernaferrari.wordkeep.util.formatTrashTimestamp
-import markor.shared.generated.resources.Res
-import markor.shared.generated.resources.directory_does_not_exist_with_arg
-import markor.shared.generated.resources.failed_to_list_files_with_arg
-import markor.shared.generated.resources.not_a_directory_with_arg
-import markor.shared.generated.resources.permission_denied_with_arg
-import okio.FileSystem
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
 import com.bernaferrari.wordkeep.util.platformFileSystem
-import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.Single
 
 @Single(binds = [IFileRepository::class])
 class FileRepository(
     private val settingsRepository: ISettingsRepository,
+    @Named("default_notebook_path") private val defaultNotebookPath: String,
 ) : IFileRepository {
 
     private val fileSystem = platformFileSystem
 
     private val trashDirectoryName = ".trash"
 
-    // Error tracking
-    private val _lastError = MutableStateFlow<String?>(null)
-    val lastError: Flow<String?> = _lastError
-
-    private fun setError(message: String) {
-        _lastError.value = message
-    }
-
-    private fun clearError() {
-        _lastError.value = null
-    }
-
-    override suspend fun getTrashPath(): Path {
-        val notebookDir = settingsRepository.getNotebookDirectory.first()
-        return if (notebookDir.isNotEmpty()) {
-            notebookDir.toPath() / trashDirectoryName
-        } else {
-            ".trash".toPath()
-        }
-    }
+    override suspend fun getTrashPath(): Path =
+        settingsRepository.getNotebookDirectory.first().ifEmpty { defaultNotebookPath }.toPath() / trashDirectoryName
 
     override suspend fun listFiles(directory: Path): List<FileInfo> =
         withContext(Dispatchers.Default) {
             try {
-                clearError()
                 if (!fileSystem.exists(directory)) {
-                    setError(
-                        getString(
-                            Res.string.directory_does_not_exist_with_arg,
-                            directory.name
-                        )
-                    )
                     return@withContext emptyList()
                 }
                 val metadata = fileSystem.metadata(directory)
                 if (!metadata.isDirectory) {
-                    setError(getString(Res.string.not_a_directory_with_arg, directory.name))
                     return@withContext emptyList()
                 }
 
                 val showHidden = settingsRepository.isFileBrowserShowHiddenFiles.first()
                 val sortOrder = settingsRepository.getFileBrowserSortOrder.first()
+                val foldersFirst = settingsRepository.isFileBrowserFolderFirst.first()
 
                 val files = fileSystem.list(directory)
 
@@ -85,39 +55,23 @@ class FileRepository(
                     .mapNotNull { path ->
                         getFileInfo(path)
                     }
-                    .let { fileInfos ->
-                        when (sortOrder) {
-                            "name" -> fileInfos.sortedWith(
-                                compareBy<FileInfo> { !it.isDirectory }.thenBy { it.name.lowercase() }
-                            )
-
-                            "date" -> fileInfos.sortedByDescending { it.lastModified }
-                            "oldest" -> fileInfos.sortedBy { it.lastModified }
-                            "size" -> fileInfos.sortedByDescending { it.size }
-                            else -> fileInfos
-                        }
-                    }
+                    .sortedWith(compareBy<FileInfo> { foldersFirst && !it.isDirectory }.then(sortOrder.comparator()))
             } catch (e: IOException) {
-                setError(getString(Res.string.failed_to_list_files_with_arg, e.message ?: ""))
                 emptyList()
             } catch (e: Exception) {
-                setError(getString(Res.string.permission_denied_with_arg, directory.name))
                 emptyList()
             }
         }
 
-    override suspend fun listFilesRecursively(directory: Path): List<FileInfo> =
+    override suspend fun listFilesRecursively(directory: Path, includePreview: Boolean): List<FileInfo> =
         withContext(Dispatchers.Default) {
-            try {
-                fileSystem.listRecursively(directory).toList()
-                    .filter { path ->
-                        val metadata = fileSystem.metadata(path)
-                        metadata.isRegularFile
-                    }
-                    .mapNotNull { getFileInfo(it) }
-            } catch (e: Exception) {
-                emptyList()
-            }
+            fileSystem.listRecursively(directory)
+                .filter { path ->
+                    !path.relativeTo(directory).segments.any { it.startsWith(".") } &&
+                        fileSystem.metadata(path).isRegularFile
+                }
+                .mapNotNull { getFileInfo(it, includePreview) }
+                .toList()
         }
 
     override suspend fun searchFiles(
@@ -141,22 +95,18 @@ class FileRepository(
         }
     }
 
-    override suspend fun getFileInfo(path: Path): FileInfo? = withContext(Dispatchers.Default) {
-        try {
-            if (!fileSystem.exists(path)) return@withContext null
+    override suspend fun getFileInfo(path: Path): FileInfo? =
+        withContext(Dispatchers.Default) { getFileInfo(path, includePreview = true) }
+
+    private fun getFileInfo(path: Path, includePreview: Boolean): FileInfo? {
+        return try {
+            if (!fileSystem.exists(path)) return null
             val metadata = fileSystem.metadata(path)
 
             val name = path.name
             val extension = if (name.contains(".")) name.substringAfterLast(".") else ""
 
-            val isTextFile = !metadata.isDirectory && (extension.lowercase() in setOf(
-                "md",
-                "txt",
-                "markdown",
-                "org",
-                "todo"
-            ))
-            val preview = if (isTextFile) {
+            val preview = if (includePreview && !metadata.isDirectory && isNoteFileName(name)) {
                 try {
                     fileSystem.read(path) {
                         val limit = 1500L
@@ -184,209 +134,211 @@ class FileRepository(
 
     override suspend fun createFile(parent: Path, name: String): Path? =
         withContext(Dispatchers.Default) {
-            try {
-                if (!fileSystem.exists(parent)) {
-                    fileSystem.createDirectories(parent)
+            noteFileMutations.withLock {
+                try {
+                    if (!fileSystem.exists(parent)) {
+                        fileSystem.createDirectories(parent)
+                    }
+                    val filePath = fileSystem.resolveUniquePath(parent, name)
+                    fileSystem.write(filePath) {
+                    }
+                    filePath
+                } catch (e: IOException) {
+                    null
                 }
-                val filePath = resolveUniquePath(parent, name)
-                fileSystem.write(filePath) {
-                }
-                filePath
-            } catch (e: IOException) {
-                null
             }
         }
 
     override suspend fun createFileWithContent(parent: Path, name: String, content: String): Path? =
         withContext(Dispatchers.Default) {
-            try {
-                if (!fileSystem.exists(parent)) {
-                    fileSystem.createDirectories(parent)
+            noteFileMutations.withLock {
+                try {
+                    if (!fileSystem.exists(parent)) {
+                        fileSystem.createDirectories(parent)
+                    }
+                    val filePath = fileSystem.resolveUniquePath(parent, name)
+                    fileSystem.write(filePath) {
+                        writeUtf8(content)
+                    }
+                    filePath
+                } catch (e: IOException) {
+                    null
                 }
-                val filePath = resolveUniquePath(parent, name)
-                fileSystem.write(filePath) {
-                    writeUtf8(content)
-                }
-                filePath
-            } catch (e: IOException) {
-                null
             }
         }
 
     override suspend fun createDirectory(parent: Path, name: String): Path? =
         withContext(Dispatchers.Default) {
-            try {
-                val dirPath = resolveUniquePath(parent, name)
-                fileSystem.createDirectories(dirPath)
-                dirPath
-            } catch (e: IOException) {
-                null
+            noteFileMutations.withLock {
+                try {
+                    val dirPath = fileSystem.resolveUniquePath(parent, name)
+                    fileSystem.createDirectories(dirPath)
+                    dirPath
+                } catch (e: IOException) {
+                    null
+                }
             }
         }
 
     override suspend fun deleteFile(path: Path): Boolean = withContext(Dispatchers.Default) {
-        try {
-            val metadata = fileSystem.metadata(path)
-            if (metadata.isDirectory) {
-                fileSystem.deleteRecursively(path)
-            } else {
-                fileSystem.delete(path)
-            }
-            true
-        } catch (e: IOException) {
-            false
-        }
-    }
-
-    override suspend fun moveToTrash(path: Path): Boolean = withContext(Dispatchers.Default) {
-        try {
-            val trashPath = getTrashPath()
-            if (!fileSystem.exists(trashPath)) {
-                fileSystem.createDirectories(trashPath)
-            }
-
-            val fileName = path.name
-            val timestamp = formatTimestampForTrash(nowMillis())
-            val trashFileName = "${timestamp}_$fileName"
-            val destination = trashPath / trashFileName
-
-            fileSystem.atomicMove(path, destination)
-            true
-        } catch (e: IOException) {
-            false
-        }
-    }
-
-    private fun formatTimestampForTrash(epochMillis: Long): String = formatTrashTimestamp(epochMillis)
-
-    override suspend fun restoreFromTrash(path: Path, originalPath: Path): Boolean =
-        withContext(Dispatchers.Default) {
+        noteFileMutations.withLock {
             try {
-                // Create parent directories if needed
-                val parent = originalPath.parent
-                if (parent != null && !fileSystem.exists(parent)) {
-                    fileSystem.createDirectories(parent)
+                val entry = trashEntry(getTrashPath(), path)
+                if (entry != null) {
+                    fileSystem.deleteRecursively(entry)
+                    return@withLock true
                 }
-                fileSystem.atomicMove(path, originalPath)
+                val metadata = fileSystem.metadata(path)
+                if (metadata.isDirectory) {
+                    fileSystem.deleteRecursively(path)
+                } else {
+                    fileSystem.delete(path)
+                }
                 true
             } catch (e: IOException) {
                 false
             }
         }
+    }
+
+    @OptIn(ExperimentalUuidApi::class)
+    override suspend fun moveToTrash(path: Path): Path? = withContext(Dispatchers.Default) {
+        noteFileMutations.withLock {
+            val trash = getTrashPath()
+            val entry = trash / Uuid.random().toString()
+            val destination = entry / "item" / path.name
+            try {
+                if (path == trash || path.segments.any { it == trashDirectoryName }) return@withLock null
+                fileSystem.createDirectories(destination.parent!!)
+                fileSystem.write(entry / "original-path") {
+                    writeUtf8(path.normalized().toString())
+                }
+                fileSystem.atomicMove(path, destination)
+                destination
+            } catch (_: IOException) {
+                runCatching { fileSystem.deleteRecursively(entry) }
+                null
+            }
+        }
+    }
+
+    override suspend fun restoreFromTrash(path: Path): Path? = withContext(Dispatchers.Default) {
+        noteFileMutations.withLock {
+            val trash = getTrashPath()
+            val original = originalTrashPath(trash, path) ?: return@withLock null
+            val parent = original.parent ?: return@withLock null
+            try {
+                fileSystem.createDirectories(parent)
+                val destination = fileSystem.resolveUniquePath(parent, original.name)
+                fileSystem.atomicMove(path, destination)
+                trashEntry(trash, path)?.let { runCatching { fileSystem.deleteRecursively(it) } }
+                destination
+            } catch (_: IOException) {
+                null
+            }
+        }
+    }
+
+    private fun trashEntry(trash: Path, item: Path): Path? =
+        item.parent?.takeIf { it.name == "item" }?.parent?.takeIf { it.parent == trash }
+
+    private fun originalTrashPath(trash: Path, path: Path): Path? {
+        val entry = trashEntry(trash, path)
+        if (entry != null) {
+            return try {
+                fileSystem.read(entry / "original-path") { readUtf8().toPath(normalize = true) }
+                    .takeIf { original ->
+                        original.name == path.name &&
+                            trashDirectoryName !in original.segments && ".." !in original.segments
+                    }
+            } catch (_: IOException) {
+                null
+            }
+        }
+
+        // Older trash entries store only the timestamp and filename.
+        if (path.parent != trash) return null
+        val name = legacyTrashName.matchEntire(path.name)?.groupValues?.get(1) ?: return null
+        return trash.parent?.resolve(name)
+    }
+
+    private val legacyTrashName = Regex("[0-9]{8}_[0-9]{6}_(.+)")
 
     override suspend fun emptyTrash(): Boolean = withContext(Dispatchers.Default) {
-        try {
-            val trashPath = getTrashPath()
-            if (fileSystem.exists(trashPath)) {
-                fileSystem.deleteRecursively(trashPath)
-                fileSystem.createDirectories(trashPath)
+        noteFileMutations.withLock {
+            try {
+                fileSystem.deleteRecursively(getTrashPath())
+                true
+            } catch (_: IOException) {
+                false
             }
-            true
-        } catch (e: IOException) {
-            false
         }
     }
 
     override suspend fun listTrash(): List<FileInfo> = withContext(Dispatchers.Default) {
-        try {
-            val trashPath = getTrashPath()
-            if (!fileSystem.exists(trashPath)) return@withContext emptyList()
-
-            fileSystem.list(trashPath)
-                .filter { path ->
-                    val name = path.name
-                    !name.startsWith(".") && name.contains("_")
+        noteFileMutations.withLock {
+            val trash = getTrashPath()
+            fileSystem.listOrNull(trash).orEmpty()
+                .flatMap { entry ->
+                    if (legacyTrashName.matches(entry.name)) listOf(entry)
+                    else fileSystem.listOrNull(entry / "item").orEmpty()
                 }
                 .mapNotNull { path ->
-                    getFileInfo(path)
+                    getFileInfo(path, includePreview = true)?.let { file ->
+                        val original = originalTrashPath(trash, path)
+                        file.copy(name = original?.name ?: file.name)
+                    }
                 }
                 .sortedByDescending { it.lastModified }
-        } catch (e: Exception) {
-            emptyList()
         }
     }
 
-    override suspend fun searchContent(
-        directory: Path,
-        query: String,
-        recursive: Boolean
-    ): List<FileInfo> = withContext(Dispatchers.Default) {
+    override suspend fun readText(path: Path): String? = withContext(Dispatchers.Default) {
         try {
-            val fileList = if (recursive) {
-                fileSystem.listRecursively(directory).toList()
-            } else {
-                fileSystem.list(directory)
-            }
-
-            fileList.filter { path ->
-                val metadata = fileSystem.metadata(path)
-                metadata.isRegularFile && isTextFile(path)
-            }.filter { path ->
-                try {
-                    val content = fileSystem.read(path) {
-                        readUtf8()
-                    }
-                    content.contains(query, ignoreCase = true)
-                } catch (e: Exception) {
-                    false
-                }
-            }.mapNotNull { getFileInfo(it) }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun isTextFile(path: Path): Boolean {
-        val extension = path.name.substringAfterLast(".", "").lowercase()
-        return extension in setOf("md", "txt", "markdown", "org", "todo", " rst", "adoc")
-    }
-
-    override suspend fun readText(path: Path): String = withContext(Dispatchers.Default) {
-        try {
-            fileSystem.read(path) {
-                readUtf8()
-            }
-        } catch (e: IOException) {
-            ""
+            fileSystem.read(path) { readUtf8() }
+        } catch (_: IOException) {
+            null
         }
     }
 
     override suspend fun renameFile(path: Path, newName: String): Path? =
         withContext(Dispatchers.Default) {
-            try {
-                val parent = path.parent ?: ".".toPath()
-                val dest = resolveUniquePath(parent, newName, excludePath = path)
-                if (dest == path) return@withContext path
-                fileSystem.atomicMove(path, dest)
-                dest
-            } catch (e: IOException) {
-                null
+            noteFileMutations.withLock {
+                try {
+                    val parent = path.parent ?: ".".toPath()
+                    val dest = fileSystem.resolveUniquePath(parent, newName, excludePath = path)
+                    if (dest == path) return@withLock path
+                    fileSystem.atomicMove(path, dest)
+                    dest
+                } catch (e: IOException) {
+                    null
+                }
             }
         }
 
     override suspend fun copyFile(source: Path, destination: Path): Boolean =
         withContext(Dispatchers.Default) {
-            try {
-                fileSystem.copy(source, destination)
-                true
-            } catch (e: IOException) {
-                false
+            noteFileMutations.withLock {
+                try {
+                    fileSystem.copy(source, destination)
+                    true
+                } catch (e: IOException) {
+                    false
+                }
             }
         }
 
     override suspend fun moveFile(source: Path, destination: Path): Boolean =
         withContext(Dispatchers.Default) {
-            try {
-                fileSystem.atomicMove(source, destination)
-                true
-            } catch (e: IOException) {
-                false
+            noteFileMutations.withLock {
+                try {
+                    fileSystem.atomicMove(source, destination)
+                    true
+                } catch (e: IOException) {
+                    false
+                }
             }
         }
-
-    override fun observeFiles(directory: Path): Flow<List<Path>> {
-        return MutableStateFlow(emptyList())
-    }
 
     override suspend fun isDirectory(path: Path): Boolean = withContext(Dispatchers.Default) {
         try {
@@ -404,33 +356,4 @@ class FileRepository(
         }
     }
 
-    private fun resolveUniquePath(
-        parent: Path,
-        requestedName: String,
-        excludePath: Path? = null
-    ): Path {
-        val normalizedName = requestedName.trim().ifBlank { "Untitled" }
-        val (baseName, extension) = splitBaseAndExtension(normalizedName)
-        var index = 0
-
-        while (true) {
-            val candidateName = if (index == 0) {
-                normalizedName
-            } else {
-                "$baseName ($index)$extension"
-            }
-            val candidatePath = parent / candidateName
-            if (excludePath != null && candidatePath == excludePath) return candidatePath
-            if (!fileSystem.exists(candidatePath)) return candidatePath
-            index++
-        }
-    }
-
-    private fun splitBaseAndExtension(fileName: String): Pair<String, String> {
-        val dotIndex = fileName.lastIndexOf('.')
-        if (dotIndex <= 0 || dotIndex == fileName.length - 1) {
-            return fileName to ""
-        }
-        return fileName.substring(0, dotIndex) to fileName.substring(dotIndex)
-    }
 }

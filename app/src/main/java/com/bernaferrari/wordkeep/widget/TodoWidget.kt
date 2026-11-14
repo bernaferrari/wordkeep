@@ -33,6 +33,14 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.bernaferrari.wordkeep.R
+import com.bernaferrari.wordkeep.domain.model.TodoTask
+import com.bernaferrari.wordkeep.domain.repository.IDocumentRepository
+import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
+import kotlinx.coroutines.flow.first
+import okio.Path.Companion.toPath
+import org.koin.android.ext.android.getKoin
+import org.koin.core.qualifier.named
+import java.time.LocalDate
 import com.bernaferrari.wordkeep.activity.MainActivity
 
 /**
@@ -43,13 +51,26 @@ class TodoWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra("action", "todo")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            action = MainActivity.ACTION_OPEN_WIDGET
+            putExtra(MainActivity.EXTRA_WIDGET_NOTE, "todo")
         }
 
-        // In a real implementation, load actual todo count from DataStore/Preferences
-        val pendingTasks = 5
-        val completedToday = 3
+        val koin = (context.applicationContext as android.app.Application).getKoin()
+        val settings = koin.get<ISettingsRepository>()
+        val documents = koin.get<IDocumentRepository>()
+        val defaultPath = koin.get<String>(named("default_notebook_path")).toPath()
+        val path = settings.getTodoFilePath.first().ifEmpty { (defaultPath / "todo.txt").toString() }
+        val lines = documents.readContent(path.toPath()).orEmpty().lineSequence()
+            .map(String::trim).filter(String::isNotEmpty).toList()
+        val checklistPattern = Regex("""^[-*+]\s+\[([ xX])]\s+(.+)$""")
+        val checklist = lines.mapNotNull(checklistPattern::matchEntire)
+        val tasks = lines.filterNot { it.startsWith("#") || checklistPattern.matches(it) }
+            .takeIf { checklist.isEmpty() || lines.none { it.startsWith("#") } }
+            .orEmpty().map(TodoTask::parse)
+        val today = LocalDate.now().toString()
+        val pendingTasks = tasks.count { !it.isCompleted } + checklist.count { it.groupValues[1] == " " }
+        val completedToday = tasks.count { it.isCompleted && it.completionDate == today }
 
         provideContent {
             GlanceTheme {
@@ -152,7 +173,7 @@ class TodoWidget : GlanceAppWidget() {
                             )
                             Spacer(modifier = GlanceModifier.width(8.dp))
                             Text(
-                                text = "Tap to add task",
+                                text = context.getString(R.string.widget_open_todo),
                                 style = TextStyle(
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 13.sp,

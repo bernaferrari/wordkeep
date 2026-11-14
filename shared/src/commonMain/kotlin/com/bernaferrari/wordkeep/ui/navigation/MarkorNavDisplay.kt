@@ -62,7 +62,6 @@ fun MarkorNavDisplay(
                             onNavigateBack = onPopBackStack,
                         )
 
-                        is Screen.Search -> Unit
                     }
                 }
             }

@@ -1,7 +1,9 @@
 package com.bernaferrari.wordkeep.data.repository
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import com.bernaferrari.wordkeep.data.local.BrowserStorage
 import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,7 +41,7 @@ internal class WasmSettingsRepository : ISettingsRepository {
     override val isFirstRun: Flow<Boolean> = isFirstRunState.asStateFlow()
     override val isFileBrowserShowHiddenFiles: Flow<Boolean> = showHiddenState.asStateFlow()
     override val isFileBrowserShowFileExtensions: Flow<Boolean> = showExtState.asStateFlow()
-    override val getFileBrowserSortOrder: Flow<String> = sortOrderState.asStateFlow()
+    override val getFileBrowserSortOrder: Flow<FileSortOrder> = sortOrderState.map(FileSortOrder::fromPreference)
     override val isFileBrowserFolderFirst: Flow<Boolean> = folderFirstState.asStateFlow()
     override val isShowLineNumbers: Flow<Boolean> = lineNumbersState.asStateFlow()
     override val isWordWrap: Flow<Boolean> = wordWrapState.asStateFlow()
@@ -75,8 +77,8 @@ internal class WasmSettingsRepository : ISettingsRepository {
     override suspend fun setFileBrowserShowFileExtensions(value: Boolean) =
         setBool(showExtState, "markor.settings.showExt", value)
 
-    override suspend fun setFileBrowserSortOrder(value: String) =
-        setString(sortOrderState, "markor.settings.sortOrder", value)
+    override suspend fun setFileBrowserSortOrder(value: FileSortOrder) =
+        setString(sortOrderState, "markor.settings.sortOrder", value.preferenceValue)
 
     override suspend fun setFileBrowserFolderFirst(value: Boolean) =
         setBool(folderFirstState, "markor.settings.folderFirst", value)

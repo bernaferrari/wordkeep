@@ -1,5 +1,6 @@
 package com.bernaferrari.wordkeep.ui.viewmodel
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bernaferrari.wordkeep.domain.repository.ISettingsRepository
@@ -54,7 +55,7 @@ class SettingsViewModel(
     val fileBrowserShowExt = settingsRepository.isFileBrowserShowFileExtensions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
     val fileBrowserSortOrder = settingsRepository.getFileBrowserSortOrder
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "name")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FileSortOrder.NAME)
     val fileBrowserFolderFirst = settingsRepository.isFileBrowserFolderFirst
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -92,7 +93,7 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setFileBrowserShowFileExtensions(value) }
     }
 
-    fun setFileBrowserSortOrder(value: String) {
+    fun setFileBrowserSortOrder(value: FileSortOrder) {
         viewModelScope.launch { settingsRepository.setFileBrowserSortOrder(value) }
     }
 

@@ -41,8 +41,9 @@ class QuickNoteWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra("action", "quick_note")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            action = MainActivity.ACTION_OPEN_WIDGET
+            putExtra(MainActivity.EXTRA_WIDGET_NOTE, "quick_note")
         }
 
         provideContent {

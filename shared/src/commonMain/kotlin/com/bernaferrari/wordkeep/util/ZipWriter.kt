@@ -1,5 +1,8 @@
 package com.bernaferrari.wordkeep.util
 
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 import okio.Buffer
 import okio.FileSystem
 import okio.Path
@@ -183,27 +186,11 @@ class ZipWriter(
     }
 
     private fun dosDateTime(timestamp: Long): Pair<Int, Int> {
-        // Convert milliseconds to DOS date/time format
-        val totalSeconds = timestamp / 1000
-        val days = (totalSeconds / 86400).toInt()
-        val secondsInDay = (totalSeconds % 86400).toInt()
-
-        // DOS epoch is 1980-01-01
-        // Unix epoch is 1970-01-01, so we need to adjust
-        // Days from 1970 to 1980: 3652 (including leap years)
-        val dosDays = days - 3652
-
-        val year = 1980 + dosDays / 365
-        val remainingDays = dosDays % 365
-        val month = (remainingDays / 30 + 1).coerceIn(1, 12)
-        val day = (remainingDays % 30 + 1).coerceIn(1, 31)
-
-        val hour = (secondsInDay / 3600).coerceIn(0, 23)
-        val minute = ((secondsInDay % 3600) / 60).coerceIn(0, 59)
-        val second = ((secondsInDay % 60) / 2).coerceIn(0, 29)
-
-        val dosTime = (hour shl 11) or (minute shl 5) or second
-        val dosDate = ((year - 1980) shl 9) or (month shl 5) or day
+        val local = Instant.fromEpochMilliseconds(timestamp)
+            .toLocalDateTime(TimeZone.currentSystemDefault())
+        val year = local.year.coerceIn(1980, 2107)
+        val dosTime = (local.hour shl 11) or (local.minute shl 5) or (local.second / 2)
+        val dosDate = ((year - 1980) shl 9) or ((local.month.ordinal + 1) shl 5) or local.day
 
         return dosTime to dosDate
     }

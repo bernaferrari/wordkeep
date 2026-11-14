@@ -28,7 +28,7 @@ interface NoteMetadataDao {
     @Query("DELETE FROM notes WHERE path = :path")
     suspend fun deleteNoteByPath(path: String)
 
-    @Query("DELETE FROM notes WHERE path = :path OR path LIKE :pathPrefix")
+    @Query("DELETE FROM notes WHERE path = :path OR substr(path, 1, length(:pathPrefix)) = :pathPrefix")
     suspend fun deleteNotesByPathOrPrefix(path: String, pathPrefix: String)
 
     @Query("SELECT * FROM labels WHERE name = :name LIMIT 1")

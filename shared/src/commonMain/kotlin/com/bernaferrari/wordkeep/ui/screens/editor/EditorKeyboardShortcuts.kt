@@ -10,7 +10,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
-import com.bernaferrari.wordkeep.domain.model.Document
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -18,10 +17,8 @@ internal data class EditorKeyboardShortcutHandlers(
     val showSearchDialog: Boolean,
     val onDismissSearch: () -> Unit,
     val onShowSearch: () -> Unit,
-    val document: Document?,
     val content: TextFieldValue,
     val onContentChange: (TextFieldValue) -> Unit,
-    val onMarkUnsaved: () -> Unit,
     val onSave: () -> Unit,
     val undoRedo: EditorUndoRedoState,
     val scope: CoroutineScope,
@@ -53,39 +50,33 @@ internal fun Modifier.editorKeyboardShortcuts(handlers: EditorKeyboardShortcutHa
                     }
                     if (updated != null) {
                         handlers.onContentChange(updated)
-                        handlers.onMarkUnsaved()
                     }
                     true
                 }
                 Key.Y -> {
                     handlers.undoRedo.redo(handlers.content)?.let { updated ->
                         handlers.onContentChange(updated)
-                        handlers.onMarkUnsaved()
                     }
                     true
                 }
                 Key.B -> {
                     handlers.undoRedo.pushImmediate(handlers.content)
                     handlers.onContentChange(wrapSelection(handlers.content, "**", "**"))
-                    handlers.onMarkUnsaved()
                     true
                 }
                 Key.I -> {
                     handlers.undoRedo.pushImmediate(handlers.content)
                     handlers.onContentChange(wrapSelection(handlers.content, "_", "_"))
-                    handlers.onMarkUnsaved()
                     true
                 }
                 Key.U -> {
                     handlers.undoRedo.pushImmediate(handlers.content)
                     handlers.onContentChange(wrapSelection(handlers.content, "`", "`"))
-                    handlers.onMarkUnsaved()
                     true
                 }
                 Key.K -> {
                     handlers.undoRedo.pushImmediate(handlers.content)
                     handlers.onContentChange(wrapSelection(handlers.content, "[", "](url)"))
-                    handlers.onMarkUnsaved()
                     true
                 }
                 Key.F, Key.H -> {
@@ -100,9 +91,8 @@ internal fun Modifier.editorKeyboardShortcuts(handlers: EditorKeyboardShortcutHa
         if (event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
             handlers.undoRedo.pushImmediate(handlers.content)
             handlers.onContentChange(
-                handlers.content.copy(text = handlers.content.text + "\t"),
+                insertAtCursor(handlers.content, "\t", ""),
             )
-            handlers.onMarkUnsaved()
             true
         } else {
             false

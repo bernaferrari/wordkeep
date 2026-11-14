@@ -5,6 +5,7 @@ import com.bernaferrari.wordkeep.domain.model.NoteMetadata
 
 internal fun NoteWithLabels.toDomain(): NoteMetadata = NoteMetadata(
     id = note.id,
+    updatedAt = note.updatedAt,
     path = note.path,
     title = note.title,
     pinned = note.pinned,
@@ -19,6 +20,7 @@ internal fun LabelEntity.toDomain(): NoteLabel = NoteLabel(id = id, name = name)
 
 internal fun NoteEntity.toDomain(labels: List<NoteLabel> = emptyList()): NoteMetadata = NoteMetadata(
     id = id,
+    updatedAt = updatedAt,
     path = path,
     title = title,
     pinned = pinned,

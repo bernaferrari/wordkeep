@@ -28,7 +28,8 @@ data class Document(
             return Document(
                 path = path,
                 title = path.name.substringBeforeLast("."),
-                format = DocumentFormat.fromExtension(path.name.substringAfterLast(".", "")),
+                format = if (path.name.equals("todo.txt", ignoreCase = true)) DocumentFormat.TODOTXT
+                else DocumentFormat.fromExtension(path.name.substringAfterLast(".", "")),
                 lastModified = 0L // Needs to be loaded from filesystem
             )
         }

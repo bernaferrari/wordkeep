@@ -15,4 +15,5 @@ data class NoteMetadata(
     val preview: String?,
     val imagePreviewUrl: String? = null,
     val labels: List<NoteLabel>,
+    val updatedAt: Long = 0L,
 )

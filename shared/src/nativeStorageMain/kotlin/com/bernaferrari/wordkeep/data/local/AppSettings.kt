@@ -1,5 +1,6 @@
 package com.bernaferrari.wordkeep.data.local
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -58,8 +59,8 @@ internal class AppSettings(private val dataStore: DataStore<Preferences>) {
         prefs[PrefsKeys.FILE_BROWSER_SHOW_EXT] ?: true
     }
 
-    val getFileBrowserSortOrder: Flow<String> = dataStore.data.map { prefs ->
-        prefs[PrefsKeys.FILE_BROWSER_SORT_ORDER] ?: "date"
+    val getFileBrowserSortOrder: Flow<FileSortOrder> = dataStore.data.map { prefs ->
+        FileSortOrder.fromPreference(prefs[PrefsKeys.FILE_BROWSER_SORT_ORDER])
     }
 
     val isFileBrowserFolderFirst: Flow<Boolean> = dataStore.data.map { prefs ->
@@ -114,9 +115,9 @@ internal class AppSettings(private val dataStore: DataStore<Preferences>) {
         }
     }
 
-    suspend fun setFileBrowserSortOrder(value: String) {
+    suspend fun setFileBrowserSortOrder(value: FileSortOrder) {
         dataStore.edit { prefs ->
-            prefs[PrefsKeys.FILE_BROWSER_SORT_ORDER] = value
+            prefs[PrefsKeys.FILE_BROWSER_SORT_ORDER] = value.preferenceValue
         }
     }
 

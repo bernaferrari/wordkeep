@@ -6,7 +6,7 @@ interface ISettingsRepository {
     val isFirstRun: Flow<Boolean>
     val isFileBrowserShowHiddenFiles: Flow<Boolean>
     val isFileBrowserShowFileExtensions: Flow<Boolean>
-    val getFileBrowserSortOrder: Flow<String>
+    val getFileBrowserSortOrder: Flow<FileSortOrder>
     val isFileBrowserFolderFirst: Flow<Boolean>
     val isShowLineNumbers: Flow<Boolean>
     val isWordWrap: Flow<Boolean>
@@ -21,7 +21,7 @@ interface ISettingsRepository {
     suspend fun setFirstRun(value: Boolean)
     suspend fun setFileBrowserShowHiddenFiles(value: Boolean)
     suspend fun setFileBrowserShowFileExtensions(value: Boolean)
-    suspend fun setFileBrowserSortOrder(value: String)
+    suspend fun setFileBrowserSortOrder(value: FileSortOrder)
     suspend fun setFileBrowserFolderFirst(value: Boolean)
     suspend fun setShowLineNumbers(value: Boolean)
     suspend fun setWordWrap(value: Boolean)

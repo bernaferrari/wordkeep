@@ -44,17 +44,10 @@ class RecentFilesWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
 
-        // Sample data - in production would load from DataStore
-        val recentFiles = listOf(
-            RecentFile("Shopping List", "2h ago", Color(0xFFFFAFA3)),
-            RecentFile("Meeting Notes", "5h ago", Color(0xFFCBF0F8)),
-            RecentFile("Project Ideas", "Yesterday", Color(0xFFAECBFA)),
-            RecentFile("Recipe", "2 days ago", Color(0xFFFDCFE8)),
-        )
-
+        val recentFiles = widgetRecentNotes(context)
         provideContent {
             GlanceTheme {
                 Column(
@@ -78,7 +71,7 @@ class RecentFilesWidget : GlanceAppWidget() {
                         )
                         Spacer(modifier = GlanceModifier.width(8.dp))
                         Text(
-                            text = "Recent Notes",
+                            text = context.getString(R.string.widget_preview_recent_notes),
                             style = TextStyle(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
@@ -89,9 +82,11 @@ class RecentFilesWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(16.dp))
 
-                    // Recent files list
+                    if (recentFiles.isEmpty()) {
+                        Text(context.getString(R.string.widget_no_recent_notes), style = TextStyle(color = ColorProvider(Color.White)))
+                    }
                     recentFiles.forEach { file ->
-                        RecentFileRow(file = file)
+                        RecentFileRow(file, widgetRecentNoteIntent(context, file))
                         Spacer(modifier = GlanceModifier.height(8.dp))
                     }
 
@@ -120,17 +115,12 @@ class RecentFilesWidget : GlanceAppWidget() {
     }
 }
 
-data class RecentFile(
-    val name: String,
-    val time: String,
-    val color: Color
-)
-
 @Composable
-private fun RecentFileRow(file: RecentFile) {
+private fun RecentFileRow(path: String, intent: Intent) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
+            .clickable(actionStartActivity(intent))
             .background(ColorProvider(Color.White.copy(alpha = 0.08f)))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -139,7 +129,7 @@ private fun RecentFileRow(file: RecentFile) {
         Box(
             modifier = GlanceModifier
                 .size(8.dp)
-                .background(ColorProvider(file.color))
+                .background(ColorProvider(Color(0xFFAECBFA)))
                 .cornerRadius(4.dp)
         ) {}
 
@@ -147,7 +137,7 @@ private fun RecentFileRow(file: RecentFile) {
 
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
-                text = file.name,
+                text = path.substringAfterLast('/').substringBeforeLast('.'),
                 style = TextStyle(
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
@@ -157,14 +147,7 @@ private fun RecentFileRow(file: RecentFile) {
             )
         }
 
-        Text(
-            text = file.time,
-            style = TextStyle(
-                fontWeight = FontWeight.Normal,
-                fontSize = 11.sp,
-                color = ColorProvider(Color.White.copy(alpha = 0.5f))
-            )
-        )
+
     }
 }
 

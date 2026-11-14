@@ -1,8 +1,10 @@
 package com.bernaferrari.wordkeep.ui.viewmodel
 
+import com.bernaferrari.wordkeep.domain.repository.FileSortOrder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bernaferrari.wordkeep.domain.usecase.IndexNoteMetadataUseCase
+import com.bernaferrari.wordkeep.domain.model.isNoteFileName
 import com.bernaferrari.wordkeep.domain.model.NoteLabel
 import com.bernaferrari.wordkeep.domain.model.NoteMetadata
 import com.bernaferrari.wordkeep.domain.repository.IFavoritesRepository
@@ -48,14 +50,6 @@ enum class FileFilterMode {
     ALL, FAVORITES, ARCHIVE, LABEL, TRASH
 }
 
-enum class FileTypeFilter(val displayName: String, val extensions: List<String>) {
-    ALL("All", listOf("*")),
-    MARKDOWN("MD", listOf("md", "markdown")),
-    TEXT("TXT", listOf("txt")),
-    TODO("Todo", listOf("todo")),
-    CODE("Code", listOf("py", "js", "kt", "java", "cpp", "c", "h", "rs", "go", "rb"))
-}
-
 @KoinViewModel
 class FileBrowserViewModel(
     private val fileRepository: IFileRepository,
@@ -99,14 +93,6 @@ class FileBrowserViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    // Search in content flag
-    private val _searchInContent = MutableStateFlow(false)
-    val searchInContent: StateFlow<Boolean> = _searchInContent.asStateFlow()
-
-    // Content search results
-    private val _contentSearchResults = MutableStateFlow<List<FileInfo>>(emptyList())
-    val contentSearchResults: StateFlow<List<FileInfo>> = _contentSearchResults.asStateFlow()
-
     // Favorites
     val favorites: StateFlow<Set<String>> = favoritesRepository.favorites
         .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
@@ -115,8 +101,11 @@ class FileBrowserViewModel(
     val recentFiles: StateFlow<List<String>> = favoritesRepository.recentFiles
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val sortOrder: StateFlow<String> = settingsRepository.getFileBrowserSortOrder
-        .stateIn(viewModelScope, SharingStarted.Lazily, "date")
+    private val foldersFirst = settingsRepository.isFileBrowserFolderFirst
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    val sortOrder: StateFlow<FileSortOrder> = settingsRepository.getFileBrowserSortOrder
+        .stateIn(viewModelScope, SharingStarted.Lazily, FileSortOrder.NEWEST)
 
     val noteMetadataByPath: StateFlow<Map<String, NoteMetadata>> =
         noteMetadataRepository.observeNotes()
@@ -136,10 +125,6 @@ class FileBrowserViewModel(
         noteMetadataRepository.observeLabels()
             .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    // File Type Filter
-    private val _fileTypeFilter = MutableStateFlow(FileTypeFilter.ALL)
-    val fileTypeFilter: StateFlow<FileTypeFilter> = _fileTypeFilter.asStateFlow()
-
     // Every note in the notebook, folders included, for search.
     private val _searchableNotes = MutableStateFlow<List<FileInfo>>(emptyList())
     val searchableNotes: StateFlow<List<FileInfo>> = _searchableNotes.asStateFlow()
@@ -151,7 +136,7 @@ class FileBrowserViewModel(
             _searchableNotes.value = fileRepository.listFilesRecursively(root).filter { file ->
                 val relative = runCatching { file.path.relativeTo(root) }.getOrNull() ?: return@filter false
                 relative.segments.none { it.startsWith(".") } &&
-                    file.extension.lowercase() in SEARCHABLE_EXTENSIONS
+                    isNoteFileName(file.name)
             }
         }
     }
@@ -164,26 +149,14 @@ class FileBrowserViewModel(
     val filteredFiles: StateFlow<List<FileInfo>> =
         combine(
             listOf<Flow<Any?>>(
-                _files, _trashFiles, _filterMode, _searchQuery, _searchInContent,
-                _contentSearchResults, favorites, noteMetadataByPath, sortOrder,
-                _currentLabel, _fileTypeFilter,
+                _files, _trashFiles, _filterMode, _searchQuery, favorites, noteMetadataByPath, sortOrder,
+                _currentLabel, foldersFirst,
             )
         ) { getFilteredFiles() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var currentPathString: String? = null
-    private var didRunIndexer = false
-
-    private fun originalPathFromTrash(path: Path): Path? {
-        val dateSeparator = path.name.indexOf("_")
-        val timeSeparator = path.name.indexOf("_", startIndex = dateSeparator + 1)
-        val originalName = if (timeSeparator > 0) {
-            path.name.substring(timeSeparator + 1)
-        } else {
-            path.name
-        }
-        return currentPathString?.toPath()?.let { it / originalName }
-    }
+    private var indexJob: kotlinx.coroutines.Job? = null
 
     suspend fun loadFiles(path: String?): String {
         _isLoading.value = true
@@ -219,14 +192,15 @@ class FileBrowserViewModel(
             _isLoading.value = false
         }
 
-        if (!didRunIndexer) {
-            didRunIndexer = true
-            viewModelScope.launch {
-                try {
-                    indexNoteMetadata(resolvedPathString.toPath(), nowMillis())
-                } catch (e: Exception) {
-                    messageManager.error(getString(Res.string.failed_to_index_files))
-                }
+        if (indexJob?.isActive == true) return resolvedPathString
+        indexJob = viewModelScope.launch {
+            try {
+                val root = settingsRepository.getNotebookDirectory.first().ifEmpty { defaultNotebookPath }
+                indexNoteMetadata(root.toPath())
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                messageManager.error(getString(Res.string.failed_to_index_files))
             }
         }
         return resolvedPathString
@@ -281,17 +255,9 @@ class FileBrowserViewModel(
                 if (isTrashMode) {
                     // Permanent delete from trash should remove instantly from UI.
                     _trashFiles.value = _trashFiles.value.filterNot { it.path == path }
-                    val isDirectory = fileRepository.isDirectory(path)
                     val success = fileRepository.deleteFile(path)
                     if (success) {
-                        originalPathFromTrash(path)?.let { originalPath ->
-                            if (isDirectory) {
-                                noteMetadataRepository.deleteByPathRecursively(originalPath.toString())
-                            } else {
-                                noteMetadataRepository.deleteByPath(originalPath.toString())
-                            }
-                            favoritesRepository.removeFavorite(originalPath.toString())
-                        }
+                        removeTrashMetadata(path)
                         messageManager.success(getString(Res.string.deleted_permanently))
                     } else {
                         messageManager.error(getString(Res.string.failed_to_delete_permanently))
@@ -299,8 +265,9 @@ class FileBrowserViewModel(
                 } else {
                     // Optimistic update: hide entry immediately while move runs.
                     _files.value = _files.value.filterNot { it.path == path }
-                    val success = fileRepository.moveToTrash(path)
-                    if (success) {
+                    val destination = fileRepository.moveToTrash(path)
+                    if (destination != null) {
+                        moveNoteMetadata(path, destination)
                         messageManager.success(getString(Res.string.moved_to_trash))
                     } else {
                         messageManager.error(getString(Res.string.failed_to_move_to_trash))
@@ -318,11 +285,12 @@ class FileBrowserViewModel(
         }
     }
 
-    fun restoreFile(path: Path, originalPath: Path) {
+    fun restoreFile(path: Path) {
         viewModelScope.launch {
             try {
-                val success = fileRepository.restoreFromTrash(path, originalPath)
-                if (success) {
+                val destination = fileRepository.restoreFromTrash(path)
+                if (destination != null) {
+                    moveNoteMetadata(path, destination)
                     messageManager.success(getString(Res.string.file_restored))
                 } else {
                     messageManager.error(getString(Res.string.failed_to_restore_file))
@@ -343,8 +311,10 @@ class FileBrowserViewModel(
     fun emptyTrash() {
         viewModelScope.launch {
             try {
+                val entries = fileRepository.listTrash()
                 val success = fileRepository.emptyTrash()
                 if (success) {
+                    entries.forEach { removeTrashMetadata(it.path) }
                     messageManager.success(getString(Res.string.trash_emptied))
                 } else {
                     messageManager.error(getString(Res.string.failed_to_empty_trash))
@@ -377,18 +347,10 @@ class FileBrowserViewModel(
                 val selectedSet = selected.toSet()
                 _trashFiles.value = _trashFiles.value.filterNot { it.path in selectedSet }
                 selected.forEach { path ->
-                    val isDirectory = fileRepository.isDirectory(path)
-                    val originalPath = originalPathFromTrash(path)
-                    val success = fileRepository.deleteFile(path)
-                    if (!success) {
+                    if (fileRepository.deleteFile(path)) {
+                        removeTrashMetadata(path)
+                    } else {
                         failures++
-                    } else if (originalPath != null) {
-                        if (isDirectory) {
-                            noteMetadataRepository.deleteByPathRecursively(originalPath.toString())
-                        } else {
-                            noteMetadataRepository.deleteByPath(originalPath.toString())
-                        }
-                        favoritesRepository.removeFavorite(originalPath.toString())
                     }
                 }
             } else {
@@ -396,9 +358,11 @@ class FileBrowserViewModel(
                 val selectedSet = selected.toSet()
                 _files.value = _files.value.filterNot { it.path in selectedSet }
                 selected.forEach { path ->
-                    val success = fileRepository.moveToTrash(path)
-                    if (!success) {
+                    val destination = fileRepository.moveToTrash(path)
+                    if (destination == null) {
                         failures++
+                    } else {
+                        moveNoteMetadata(path, destination)
                     }
                 }
             }
@@ -512,15 +476,26 @@ class FileBrowserViewModel(
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
-        // Trigger content search if enabled
-        if (_searchInContent.value && query.isNotBlank()) {
-            viewModelScope.launch {
-                val path = currentPathString?.toPath() ?: return@launch
-                _contentSearchResults.value = fileRepository.searchContent(path, query)
+    }
+
+    private suspend fun moveNoteMetadata(from: Path, to: Path) {
+        val source = from.toString()
+        val notes = noteMetadataRepository.observeNotes().first().map { it.path }
+        for (path in notes) {
+            if (path == source || path.startsWith("$source/")) {
+                val destination = to.toString() + path.removePrefix(source)
+                noteMetadataRepository.updatePath(path, destination, nowMillis())
             }
-        } else if (query.isBlank()) {
-            _contentSearchResults.value = emptyList()
         }
+        favoritesRepository.updatePath(source, to.toString())
+    }
+
+    private suspend fun removeTrashMetadata(path: Path) {
+        val source = path.toString()
+        noteMetadataRepository.deleteByPathRecursively(source)
+        favoritesRepository.favorites.first().filter {
+            it == source || it.startsWith("$source/")
+        }.forEach { favoritesRepository.removeFavorite(it) }
     }
 
     // Favorites operations
@@ -564,16 +539,11 @@ class FileBrowserViewModel(
         }
     }
 
-    fun setSortOrder(order: String) {
+    fun setSortOrder(order: FileSortOrder) {
         viewModelScope.launch {
             settingsRepository.setFileBrowserSortOrder(order)
             refreshFiles()
         }
-    }
-
-    // File type filter
-    fun setFileTypeFilter(filter: FileTypeFilter) {
-        _fileTypeFilter.value = filter
     }
 
     fun setLabelFilter(label: String) {
@@ -581,30 +551,9 @@ class FileBrowserViewModel(
         setFilterMode(FileFilterMode.LABEL)
     }
 
-    // Search in content
-    fun setSearchInContent(enabled: Boolean) {
-        _searchInContent.value = enabled
-        // Trigger content search if enabling
-        if (enabled && _searchQuery.value.isNotBlank()) {
-            viewModelScope.launch {
-                val path = currentPathString?.toPath() ?: return@launch
-                _contentSearchResults.value = fileRepository.searchContent(path, _searchQuery.value)
-            }
-        } else if (!enabled) {
-            _contentSearchResults.value = emptyList()
-        }
-    }
-
-    /**
-     * Returns files filtered by the current search query and filter mode.
-     * Matches filename (case-insensitive) or content if searchInContent is enabled.
-     */
     fun getFilteredFiles(): List<FileInfo> {
         val query = _searchQuery.value
         val mode = _filterMode.value
-        val typeFilter = _fileTypeFilter.value
-        val searchInContent = _searchInContent.value
-        val contentResults = _contentSearchResults.value
         val favs = favorites.value
         val metadata = noteMetadataByPath.value
 
@@ -645,51 +594,15 @@ class FileBrowserViewModel(
             result = result.filter { favs.contains(it.path.toString()) }
         }
 
-        // Apply file type filter
-        if (typeFilter != FileTypeFilter.ALL) {
-            result = result.filter { file ->
-                val ext = file.extension.lowercase()
-                typeFilter.extensions.contains(ext)
-            }
-        }
-
-        // Apply search filter (filename or content)
         if (query.isNotBlank()) {
-            val eligiblePaths = result.map { it.path }.toSet()
             result = result.filter { it.name.contains(query, ignoreCase = true) }
-
-            // Add content matches if searching in content
-            if (searchInContent && contentResults.isNotEmpty()) {
-                val contentMatchingPaths = contentResults.map { it.path }.toSet()
-                val nameMatchingPaths = result.map { it.path }.toSet()
-                // Add content matches that aren't already in name matches
-                result = result + contentResults.filter {
-                    it.path in eligiblePaths &&
-                        contentMatchingPaths.contains(it.path) &&
-                        !nameMatchingPaths.contains(it.path)
-                }
-            }
-        }
-
-        val contentSortComparator = when (sortOrder.value) {
-            "name" -> compareBy<FileInfo> { it.name.lowercase() }
-            "size" -> compareByDescending<FileInfo> { it.size }
-            "oldest" -> compareBy<FileInfo> { it.lastModified }
-            else -> compareByDescending<FileInfo> { it.lastModified } // "date" => recent first
         }
 
         return result.sortedWith(
-            compareByDescending<FileInfo> { metadata[it.path.toString()]?.pinned == true }
-                .then(contentSortComparator)
+            compareBy<FileInfo> { foldersFirst.value && !it.isDirectory }
+                .thenByDescending { metadata[it.path.toString()]?.pinned == true }
+                .then(sortOrder.value.comparator()),
         )
-    }
-
-    /**
-     * Returns files matching the search query in content.
-     */
-    suspend fun searchInContent(query: String): List<FileInfo> {
-        val path = currentPathString?.toPath() ?: return emptyList()
-        return fileRepository.searchContent(path, query)
     }
 
     fun togglePin(path: Path) {
@@ -730,7 +643,4 @@ class FileBrowserViewModel(
         }
     }
 
-    private companion object {
-        val SEARCHABLE_EXTENSIONS = setOf("md", "markdown", "txt", "todo", "org")
-    }
 }

@@ -35,8 +35,6 @@ sealed class Screen : NavKey {
     @Serializable
     data class FileBrowser(val path: String? = null) : Screen()
 
-    @Serializable
-    data class Search(val path: String? = null, val query: String? = null) : Screen()
 }
 
 data class BottomNavItem(
