@@ -18,13 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,7 +89,7 @@ fun FormatToolbar(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Primary actions: the inline styles people reach for most, larger and morphing on press.
+                // Primary actions: the inline styles people reach for most.
                 Row(
                     modifier = Modifier
                         .horizontalScroll(rememberScrollState())
@@ -204,7 +205,7 @@ private fun ExpressiveActionButton(
             hapticHelper.performLightClick()
             onAction(action)
         },
-        shapes = IconButtonDefaults.shapes(shape = CircleShape),
+        shape = MaterialShapes.ClamShell.toShape(),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
