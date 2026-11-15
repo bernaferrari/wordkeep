@@ -14,6 +14,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -38,6 +41,9 @@ val LocalSharedTransitionScope = compositionLocalOf<SharedTransitionScope?> { nu
  */
 @OptIn(ExperimentalAnimationApi::class)
 val LocalAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+
+internal val LocalNoteCardCoordinates =
+    compositionLocalOf<MutableMap<String, LayoutCoordinates>?> { null }
 
 object SharedTransitionKeys {
     fun fileCard(filePath: String): String = "file_card_$filePath"
@@ -84,13 +90,23 @@ fun SharedElementContainer(
 ) {
     val sharedScope = LocalSharedTransitionScope.current
     val animatedScope = LocalAnimatedVisibilityScope.current
+    val cardCoordinates = LocalNoteCardCoordinates.current
+    val sharedModifier = if (isSource && useSharedBounds && cardCoordinates != null) {
+        DisposableEffect(cardCoordinates, key) {
+            onDispose { cardCoordinates.remove(key) }
+        }
+        modifier.onGloballyPositioned { cardCoordinates[key] = it }
+    } else {
+        modifier
+    }
+
 
     if (enabled && sharedScope != null && animatedScope != null) {
         with(sharedScope) {
             val sharedContentState = rememberSharedContentState(key = key)
             Box(
                 modifier = if (useSharedBounds) {
-                    modifier.sharedBounds(
+                    sharedModifier.sharedBounds(
                         sharedContentState = sharedContentState,
                         animatedVisibilityScope = animatedScope,
                         enter = fadeIn(),
@@ -105,7 +121,7 @@ fun SharedElementContainer(
                         renderInOverlayDuringTransition = true,
                     )
                 } else {
-                    modifier.sharedElement(
+                    sharedModifier.sharedElement(
                         sharedContentState = sharedContentState,
                         animatedVisibilityScope = animatedScope,
                         boundsTransform = KeepBoundsTransform,
@@ -117,7 +133,7 @@ fun SharedElementContainer(
             }
         }
     } else {
-        Box(modifier = modifier) {
+        Box(modifier = sharedModifier) {
             content()
         }
     }

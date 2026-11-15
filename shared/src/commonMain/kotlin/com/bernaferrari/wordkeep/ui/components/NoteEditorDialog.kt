@@ -22,24 +22,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.bernaferrari.wordkeep.ui.screens.EditorScreen
 import org.koin.compose.viewmodel.koinViewModel
 
-/**
- * Keep-style note editor overlay for large screens.
- * Simple fade via parent [androidx.compose.animation.AnimatedVisibility]
- * (sharedBounds was too CPU-heavy on web).
- */
 @Composable
 fun NoteEditorDialog(
     filePath: String,
+    sourceBounds: Rect?,
+    expansion: () -> Float,
     openKeyboardOnStart: Boolean = false,
     onDismiss: () -> Unit,
 ) {
     var dismissHandler by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var dialogBounds by remember { mutableStateOf<Rect?>(null) }
 
     Box(
         modifier = Modifier
@@ -66,31 +69,49 @@ fun NoteEditorDialog(
         ) {
             val maxDialogHeight = maxHeight * 0.92f
 
-            Surface(
+            Box(
                 modifier = Modifier
                     .widthIn(max = 720.dp)
                     .heightIn(max = maxDialogHeight)
                     .fillMaxWidth(0.92f)
                     .fillMaxHeight(0.92f)
-                    .clip(RoundedCornerShape(28.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    ),
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp,
+                    .onGloballyPositioned { dialogBounds = it.boundsInRoot() },
             ) {
-                EditorScreen(
-                    filePath = filePath,
-                    openKeyboardOnStart = openKeyboardOnStart,
-                    onNavigateBack = onDismiss,
-                    embeddedInDialog = true,
-                    onRegisterDismissHandler = { dismissHandler = it },
-                    viewModel = koinViewModel(key = filePath),
-                )
+                Surface(
+                    modifier = Modifier.fillMaxSize()
+                        .graphicsLayer {
+                            val source = sourceBounds
+                            val target = dialogBounds
+                            val remaining = 1f - expansion()
+                            alpha = if (source != null && target == null) 0f else 1f
+                            if (source != null && target != null && !target.isEmpty) {
+                                transformOrigin = TransformOrigin(0f, 0f)
+                                translationX = (source.left - target.left) * remaining
+                                translationY = (source.top - target.top) * remaining
+                                scaleX = 1f + (source.width / target.width - 1f) * remaining
+                                scaleY = 1f + (source.height / target.height - 1f) * remaining
+                            }
+                        }
+                        .clip(RoundedCornerShape(28.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                ) {
+                    EditorScreen(
+                        filePath = filePath,
+                        openKeyboardOnStart = openKeyboardOnStart,
+                        onNavigateBack = onDismiss,
+                        embeddedInDialog = true,
+                        onRegisterDismissHandler = { dismissHandler = it },
+                        viewModel = koinViewModel(key = filePath),
+                    )
+                }
             }
         }
     }

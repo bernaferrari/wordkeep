@@ -2,6 +2,14 @@ package com.bernaferrari.wordkeep.ui.screens
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import com.bernaferrari.wordkeep.ui.components.LocalNoteCardCoordinates
+import com.bernaferrari.wordkeep.ui.components.SharedTransitionKeys
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -131,7 +139,8 @@ fun MainScreen(
     // Adaptive layout info
     val adaptiveInfo = rememberAdaptiveLayoutInfo()
 
-    // Keep-style note overlay on large screens — simple fade (sharedBounds was too expensive).
+    val cardCoordinates = remember { mutableMapOf<String, LayoutCoordinates>() }
+    var sourceBounds by remember { mutableStateOf<Rect?>(null) }
     var noteDialogPath by rememberSaveable { mutableStateOf<String?>(null) }
     var noteDialogAutoKeyboard by rememberSaveable { mutableStateOf(false) }
     var retainedNoteDialogPath by remember { mutableStateOf<String?>(null) }
@@ -146,6 +155,8 @@ fun MainScreen(
     // Phone: push full-screen editor. No list-detail split — the empty "select a file" pane is gone.
     val openNote: (String, Boolean) -> Unit = { path, autoOpenKeyboard ->
         if (adaptiveInfo.isLargeScreen) {
+            sourceBounds = cardCoordinates[SharedTransitionKeys.fileCard(path)]
+                ?.takeIf { it.isAttached }?.boundsInRoot()?.takeUnless { it.isEmpty }
             noteDialogPath = path
             noteDialogAutoKeyboard = autoOpenKeyboard
         } else {
@@ -228,30 +239,34 @@ fun MainScreen(
         val filterMode by fileBrowserViewModel.filterMode.collectAsState()
         val sortOrder by fileBrowserViewModel.sortOrder.collectAsState()
 
-        MainScreenPhoneLayout(
-            isSelectionMode = isSelectionMode,
-            selectedFiles = selectedFiles,
-            fileBrowserViewModel = fileBrowserViewModel,
-            notebookDirectory = notebookDirectory,
-            isGridView = isGridView,
-            currentFilterMode = filterMode,
-            currentSortOrder = sortOrder,
-            onClearSelection = { fileBrowserViewModel.clearSelection() },
-            onSelectAll = { fileBrowserViewModel.toggleSelectAll() },
-            onSetColorForSelected = { showSelectionColorSheet = true },
-            onDeleteSelected = { showDeleteDialog = true },
-            onToggleGridView = { isGridView = !isGridView },
-            onOpenSettings = onNavigateToSettings,
-            onFilterModeChange = { fileBrowserViewModel.setFilterMode(it) },
-            onSortOrderChange = { fileBrowserViewModel.setSortOrder(it) },
-            onNavigateToEditor = openNote,
-            gridMinCellWidthDp = when {
-                adaptiveInfo.isExpandedScreen -> 220
-                adaptiveInfo.isLargeScreen -> 180
-                else -> 150
-            },
-            contentMaxWidthDp = if (adaptiveInfo.isExpandedScreen) 1200 else null,
-        )
+        CompositionLocalProvider(
+            LocalNoteCardCoordinates provides cardCoordinates.takeIf { adaptiveInfo.isLargeScreen },
+        ) {
+            MainScreenPhoneLayout(
+                isSelectionMode = isSelectionMode,
+                selectedFiles = selectedFiles,
+                fileBrowserViewModel = fileBrowserViewModel,
+                notebookDirectory = notebookDirectory,
+                isGridView = isGridView,
+                currentFilterMode = filterMode,
+                currentSortOrder = sortOrder,
+                onClearSelection = { fileBrowserViewModel.clearSelection() },
+                onSelectAll = { fileBrowserViewModel.toggleSelectAll() },
+                onSetColorForSelected = { showSelectionColorSheet = true },
+                onDeleteSelected = { showDeleteDialog = true },
+                onToggleGridView = { isGridView = !isGridView },
+                onOpenSettings = onNavigateToSettings,
+                onFilterModeChange = { fileBrowserViewModel.setFilterMode(it) },
+                onSortOrderChange = { fileBrowserViewModel.setSortOrder(it) },
+                onNavigateToEditor = openNote,
+                gridMinCellWidthDp = when {
+                    adaptiveInfo.isExpandedScreen -> 220
+                    adaptiveInfo.isLargeScreen -> 180
+                    else -> 150
+                },
+                contentMaxWidthDp = if (adaptiveInfo.isExpandedScreen) 1200 else null,
+            )
+        }
 
         AnimatedVisibility(
             visible = isNoteDialogVisible,
@@ -259,9 +274,15 @@ fun MainScreen(
             exit = fadeOut(animationSpec = tween(durationMillis = 120, easing = FastOutLinearInEasing)),
             label = "keep_note_overlay",
         ) {
+            val expansion = transition.animateFloat(
+                transitionSpec = { tween(durationMillis = 240) },
+                label = "note_card_expansion",
+            ) { state -> if (state == EnterExitState.Visible) 1f else 0f }
             retainedNoteDialogPath?.let { path ->
                 NoteEditorDialog(
                     filePath = path,
+                    sourceBounds = sourceBounds,
+                    expansion = { expansion.value },
                     openKeyboardOnStart = retainedNoteDialogAutoKeyboard,
                     onDismiss = {
                         noteDialogPath = null
